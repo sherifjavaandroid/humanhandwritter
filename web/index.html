@@ -97,7 +97,7 @@
       <button class="tab" type="button" role="tab" data-tab="image" aria-selected="false">From image</button>
     </div>
     <div id="tab-text">
-      <textarea id="text" spellcheck="false" aria-label="Text to write"></textarea>
+      <textarea id="text" spellcheck="false" dir="auto" aria-label="Text to write"></textarea>
       <div class="hint">
         Start a line with a number like <code>12-</code> to begin a numbered answer. Lines without a number continue the answer above.
         Definitions such as <code>RAM: ... ROM: ...</code> are each put on their own line.
@@ -108,9 +108,15 @@
       <div class="drop" id="drop">
         <input type="file" id="imgs" accept="image/*" multiple hidden>
         <p>Drop screenshots or photos of typed text here, paste them, or <button id="pick" type="button" style="padding:4px 10px">choose files</button></p>
-        <small>Clear printed or screen text in English works best. Several images are read in order.</small>
+        <small>Clear printed or screen text works best. Several images are read in order.</small>
       </div>
       <div class="thumbs" id="thumbs"></div>
+      <div class="row">
+        <div>
+          <label for="ocrlang">Language in the image</label>
+          <select id="ocrlang"><option value="eng+ara">English and Arabic</option><option value="eng">English</option><option value="ara">Arabic</option></select>
+        </div>
+      </div>
       <button id="read" class="primary" type="button" disabled>Read text from images</button>
       <div class="status" id="ocrStatus"></div>
       <small class="tip" style="margin-bottom:14px">The text lands in the "Type text" tab so you can fix mistakes before generating.</small>
@@ -133,6 +139,13 @@
         <label for="font">Handwriting style</label>
         <select id="font"></select>
       </div>
+      <div>
+        <label for="arfont">Arabic hand</label>
+        <select id="arfont"></select>
+        <small class="tip">Used for Arabic words. Arabic pages get the margin on the right.</small>
+      </div>
+    </div>
+    <div class="row">
       <div>
         <label for="seed">Hand (seed)</label>
         <div class="seed">
@@ -222,6 +235,10 @@ async function init() {
     const op = document.createElement("option"); op.value = key; op.textContent = desc; sel.appendChild(op);
   }
   sel.value = cfg.defaults.font in cfg.fonts ? cfg.defaults.font : Object.keys(cfg.fonts)[0];
+  const asel = $("#arfont");
+  for (const [key, desc] of Object.entries(cfg.arabic_fonts || {})) { const op = document.createElement("option"); op.value = key; op.textContent = desc; asel.appendChild(op); }
+  if (!asel.options.length) { const op = document.createElement("option"); op.value = ""; op.textContent = "not available on this server"; asel.appendChild(op); asel.disabled = true; }
+  else asel.value = cfg.defaults.arabic_font in (cfg.arabic_fonts || {}) ? cfg.defaults.arabic_font : asel.options[0].value;
   $("#pages").max = cfg.max_pages;
   let saved = null;
   try { saved = localStorage.getItem("hw-text"); } catch (e) {}
@@ -237,6 +254,7 @@ function readOpts() {
     text: $("#text").value, pages: Math.max(0, +$("#pages").value || 0), gap: +$("#gap").value, font: $("#font").value,
     seed: +$("#seed").value, mess: +$("#mess").value, size: +$("#size").value, narrow: +$("#narrow").value,
     ink: $("#ink").value, format: $("#format").value, crop: $("#crop").checked, fit: $("#fit").checked, tidy: true,
+    arabic_font: $("#arfont").value, dir: "auto",
   };
 }
 
@@ -310,7 +328,7 @@ function renderThumbs() {
   imgFiles.forEach((f, i) => {
     const d = document.createElement("div"); d.className = "thumb";
     const im = document.createElement("img"); im.src = URL.createObjectURL(f); im.alt = f.name;
-    const x = document.createElement("button"); x.type = "button"; x.className = "x"; x.textContent = "×"; x.title = "Remove";
+    const x = document.createElement("button"); x.type = "button"; x.className = "x"; x.textContent = "\u00d7"; x.title = "Remove";
     x.addEventListener("click", () => { imgFiles.splice(i, 1); renderThumbs(); });
     d.appendChild(im); d.appendChild(x); box.appendChild(d);
   });
@@ -332,8 +350,8 @@ async function prepImage(file) {   // bigger, grey and higher contrast: what OCR
   x.putImageData(img, 0, 0); return c;
 }
 function cleanOcrText(raw) {
-  const lines = raw.replace(/\r/g, "").split("\n").map(l => l.replace(/[•●▪‣⁃·]/g, "-").replace(/[ \t]+/g, " ").trim());
-  const starts = /^(\d{1,3}\s?[-.)]|[-*]|\(\d{1,3}\)|[a-zA-Z][.)])\s/;
+  const lines = raw.replace(/\r/g, "").split("\n").map(l => l.replace(/[\u2022\u25cf\u25aa\u2023\u2043\u00b7]/g, "-").replace(/[ \t]+/g, " ").trim());
+  const starts = /^([\d\u0660-\u0669]{1,3}\s?[-.)]|[-*]|\([\d\u0660-\u0669]{1,3}\)|[a-zA-Z][.)])\s/;
   const out = []; let para = [];
   const flush = () => { if (para.length) out.push(para.join(" ")); para = []; };
   for (const l of lines) { if (!l) { flush(); continue; } if (starts.test(l)) { flush(); para = [l]; } else para.push(l); }
@@ -350,7 +368,7 @@ async function readImages() {
   const btn = $("#read"), st = $("#ocrStatus"); btn.disabled = true; st.className = "status"; st.textContent = "loading the reader (the first time downloads about 15 MB)...";
   try {
     await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-    const worker = await Tesseract.createWorker("eng", 1, { logger: m => { if (m.status === "recognizing text") st.textContent = `reading... ${Math.round(m.progress * 100)}%`; else if (m.status) st.textContent = m.status + "..."; } });
+    const worker = await Tesseract.createWorker($("#ocrlang").value, 1, { logger: m => { if (m.status === "recognizing text") st.textContent = `reading... ${Math.round(m.progress * 100)}%`; else if (m.status) st.textContent = m.status + "..."; } });
     const parts = [];
     for (let i = 0; i < imgFiles.length; i++) { st.textContent = `reading image ${i + 1} of ${imgFiles.length}...`; const { data } = await worker.recognize(await prepImage(imgFiles[i])); parts.push(data.text); }
     await worker.terminate();

@@ -9,7 +9,7 @@ import os, io, sys, json, time, uuid, queue, zipfile, argparse, threading, webbr
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
-from handwriting import Handwriter, DEFAULTS, CAPACITY, available_fonts, save_image
+from handwriting import Handwriter, DEFAULTS, CAPACITY, available_fonts, available_arabic_fonts, save_image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
@@ -42,6 +42,12 @@ def clean_opts(body):
     font = str(body.get("font", DEFAULTS["font"]))
     if font not in available_fonts():
         raise ValueError("unknown handwriting style")
+    arabic_font = str(body.get("arabic_font", DEFAULTS["arabic_font"]))
+    if arabic_font not in available_arabic_fonts():
+        arabic_font = next(iter(available_arabic_fonts()), DEFAULTS["arabic_font"])
+    direction = body.get("dir", "auto")
+    if direction not in ("auto", "ltr", "rtl"):
+        raise ValueError("dir must be auto, ltr or rtl")
     ink = str(body.get("ink", DEFAULTS["ink"]))
     if len(ink) != 7 or ink[0] != "#" or any(c not in "0123456789abcdefABCDEF" for c in ink[1:]):
         raise ValueError("ink colour must look like #1e349e")
@@ -52,7 +58,7 @@ def clean_opts(body):
                 seed=num("seed", -10 ** 9, 10 ** 9, int), mess=num("mess", 0, 1), font=font,
                 size=num("size", 0.35, 0.8), narrow=num("narrow", 0.6, 1.2), ink=ink,
                 crop="auto" if body.get("crop", True) else "full", tidy=bool(body.get("tidy", True)),
-                fit=bool(body.get("fit", True))), fmt
+                fit=bool(body.get("fit", True)), arabic_font=arabic_font, dir=direction), fmt
 
 
 JOB_TTL = 3 * 3600   # generated pages are kept this long
@@ -130,11 +136,15 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.isfile(path):
             return self.send_json({"error": "not found"}, 404)
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
+            ctype += "; charset=utf-8"
         with open(path, "rb") as fh:
             data = fh.read()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        if ctype.startswith("text/html"):
+            self.send_header("Cache-Control", "no-cache")
         if download_name:
             self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         self.end_headers()
@@ -166,8 +176,8 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.exists(SAMPLE):
                 with open(SAMPLE, encoding="utf-8") as fh:
                     sample = fh.read()
-            return self.send_json({"fonts": available_fonts(), "defaults": DEFAULTS, "sample_text": sample,
-                                   "capacity": CAPACITY, "max_pages": MAX_PAGES})
+            return self.send_json({"fonts": available_fonts(), "arabic_fonts": available_arabic_fonts(), "defaults": DEFAULTS,
+                                   "sample_text": sample, "capacity": CAPACITY, "max_pages": MAX_PAGES})
         if path.startswith("/api/jobs/"):
             job = JOBS.get(path.rsplit("/", 1)[1])
             if not job:

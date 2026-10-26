@@ -1,6 +1,6 @@
 <title>Handwriting Studio</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400&family=Patrick+Hand&family=Indie+Flower&family=Handlee&family=Homemade+Apple&family=Source+Sans+3:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400&family=Patrick+Hand&family=Indie+Flower&family=Handlee&family=Homemade+Apple&family=Aref+Ruqaa:wght@400;700&family=Amiri&family=Scheherazade+New&family=Source+Sans+3:wght@400;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   /* Layout: editor and controls on the left, a shelf of generated pages on the right; stacks on phones. */
@@ -113,7 +113,7 @@
         <button class="tab" type="button" role="tab" data-tab="image" aria-selected="false">From image</button>
       </div>
       <div id="tab-text">
-        <textarea id="text" spellcheck="false" aria-label="Text to write"></textarea>
+        <textarea id="text" spellcheck="false" dir="auto" aria-label="Text to write"></textarea>
         <div class="hint">
           Start a line with a number like <code>12-</code> to begin a numbered answer. Lines without a number continue the answer above.
           Definitions such as <code>RAM: ... ROM: ...</code> are each put on their own line.
@@ -124,9 +124,15 @@
         <div class="drop" id="drop">
           <input type="file" id="imgs" accept="image/*" multiple hidden>
           <p>Drop screenshots or photos of typed text here, paste them, or <button id="pick" type="button" class="small">choose files</button></p>
-          <small>Clear printed or screen text in English works best. Several images are read in order.</small>
+          <small>Clear printed or screen text works best. Several images are read in order.</small>
         </div>
         <div class="thumbs" id="thumbs"></div>
+        <div class="row" id="ocrlangRow">
+          <div>
+            <label for="ocrlang">Language in the image</label>
+            <select id="ocrlang"><option value="eng+ara">English and Arabic</option><option value="eng">English</option><option value="ara">Arabic</option></select>
+          </div>
+        </div>
         <button id="read" class="primary" type="button" disabled>Read text from images</button>
         <div class="status" id="ocrStatus" aria-live="polite"></div>
         <small class="tip" id="ocrNote" style="margin-bottom:14px">Checking whether images can be read here...</small>
@@ -149,6 +155,13 @@
           <label for="font">Handwriting style</label>
           <select id="font"></select>
         </div>
+        <div>
+          <label for="arfont">Arabic hand</label>
+          <select id="arfont"></select>
+          <small class="tip">Used for Arabic words. Arabic pages get the margin on the right.</small>
+        </div>
+      </div>
+      <div class="row">
         <div>
           <label for="seed">Hand (seed)</label>
           <div class="seed">
@@ -244,6 +257,27 @@ const FONTS = {
   handlee:  { name: "Handlee", weights: [400], label: "Handlee - light, quick print" },
   homemade: { name: "Homemade Apple", weights: [400], label: "Homemade Apple - joined-up cursive" },
 };
+const ARABIC_FONTS = {
+  arefruqaa:    { name: "Aref Ruqaa", weights: [400, 700], label: "Aref Ruqaa - everyday ruq'ah handwriting" },
+  amiri:        { name: "Amiri", weights: [400], label: "Amiri - naskh, like a careful student" },
+  scheherazade: { name: "Scheherazade New", weights: [400], label: "Scheherazade New - clear naskh" },
+};
+const ARABIC_RE = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/;
+const LATIN_RE = /[A-Za-z\u00c0-\u024f]/;
+const isArabic = s => ARABIC_RE.test(s);
+const wordType = w => ARABIC_RE.test(w) ? "R" : LATIN_RE.test(w) ? "L" : "N";
+function textDirection(s, def) { for (const ch of s) { if (ARABIC_RE.test(ch)) return "rtl"; if (LATIN_RE.test(ch)) return "ltr"; } return def; }
+function visualOrder(words, dir) {   // word-level bidi: the words of one line in left-to-right display order
+  const base = dir === "rtl" ? "R" : "L", flip = dir === "rtl" ? "L" : "R";
+  let items = words.map(w => { const t = wordType(w); return [w, t === "N" ? base : t]; });
+  if (dir === "rtl") items = items.reverse();
+  const out = []; let run = [];
+  for (const [w, t] of [...items, [null, null]]) {
+    if (t === flip) run.push(w);
+    else { if (run.length) { out.push(...run.reverse()); run = []; } if (w !== null) out.push(w); }
+  }
+  return out;
+}
 const SAMPLE = `1- A computer is an electronic device that accepts data, processes it, stores it, and produces information.
 2- Hardware: The physical parts of a computer. Examples: Keyboard, monitor, and CPU. Software: Programs that instruct a computer. Examples: Windows, Microsoft Word, and Google Chrome
 3- RAM: Temporary, volatile memory that stores data currently being used. ROM: Non-volatile memory that keeps its contents without power and stores essential instructions
@@ -292,7 +326,7 @@ function grainPattern(ctx, R, rgb = [0, 0, 0]) {
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 
 // ------------------------------------------------------------ text: parse, tidy, wrap, paginate
-const LABEL_RE = /^\d+[-)]$/;
+const LABEL_RE = /^[\d\u0660-\u0669]+[-)]$/;
 const HEAD_RE = /(?<![\w(])([A-Z][A-Za-z-]*(?: [a-z][A-Za-z-]*)?):(?=\s|$)/g;
 const NOT_HEADS = new Set(["Example", "Examples", "Note", "Answer"]);
 function splitDefinitions(line) {
@@ -312,7 +346,7 @@ function parseItems(rawLines, tidy) {
     else if (cont || (tidy && cur)) { if (!cur) { cur = { label: null, lines: [] }; items.push(cur); } cur.lines.push(words.join(" ")); }
     else { cur = { label: null, lines: [words.join(" ")] }; items.push(cur); }
   }
-  if (tidy) for (const it of items) it.lines = it.lines.flatMap(splitDefinitions);
+  if (tidy) for (const it of items) it.lines = it.lines.flatMap(l => isArabic(l) ? [l] : splitDefinitions(l));
   return items;
 }
 
@@ -324,24 +358,37 @@ class Handwriter {
     const m = mk(10, 10).getContext("2d"); m.font = `400 100px "${this.font.name}"`;
     this.cap100 = m.measureText("H").actualBoundingBoxAscent || 70;
     this.mctx = m; this.sizeUser = o.size;
+    this.arFont = ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.arefruqaa;
+    const a = mk(10, 10).getContext("2d"); a.font = `400 100px "${this.arFont.name}"`; a.direction = "rtl"; a.textAlign = "left";
+    const alef100 = a.measureText("\u0627").actualBoundingBoxAscent || this.cap100;
+    this.arRatio = (this.cap100 * 1.25) / alef100;   // alef a bit taller than a capital, as in handwriting
+    this.actx = a;
     this.gc = mk(10, 10); this.gctx = this.gc.getContext("2d"); this.tc = mk(10, 10); this.tctx = this.tc.getContext("2d");
     this.setSize(this.sizeUser);
     this.baseSlant = this.R.uniform(0.04, 0.14);
-    this.maxPen = 0; this.warnings = []; this.items = [];
+    this.maxPen = 0; this.minPen = PW; this.warnings = []; this.items = []; this.pageDir = "ltr";
   }
   setSize(size) {
-    this.size = size; this.fs = (size * LINE_GAP) / this.cap100 * 100;
+    this.size = size; this.fs = (size * LINE_GAP) / this.cap100 * 100; this.arFs = this.fs * this.arRatio;
     this.mctx.font = `400 ${this.fs}px "${this.font.name}"`;
-    this.gc.width = Math.ceil(this.fs * 2.8 * S); this.gc.height = Math.ceil(this.fs * 2.3 * S);
+    this.actx.font = `400 ${this.arFs}px "${this.arFont.name}"`; this.actx.direction = "rtl"; this.actx.textAlign = "left";
+    this.sizeCanvases(Math.ceil(this.fs * 2.8 * S));
+  }
+  sizeCanvases(w) {
+    this.gc.width = w; this.gc.height = Math.ceil(this.fs * 2.6 * S);
     this.tc.width = this.gc.width + 20; this.tc.height = this.gc.height + 20;
   }
-  measure(w) { return this.mctx.measureText(w).width * this.narrow * 1.04; }
+  pickArWeight() { const w = this.arFont.weights; return w.length === 2 ? (this.R.next() < 0.6 ? w[0] : w[1]) : w[0]; }
+  measureAr(w, weight) { this.actx.font = `${weight} ${this.arFs}px "${this.arFont.name}"`; return this.actx.measureText(w).width; }
+  measure(w) { return (isArabic(w) ? this.measureAr(w, Math.max(...this.arFont.weights)) : this.mctx.measureText(w).width) * this.narrow * 1.04; }
   advance(prev, ch) { return (prev == null ? this.mctx.measureText(ch).width : this.mctx.measureText(prev + ch).width - this.mctx.measureText(prev).width) * this.narrow; }
   pickWeight() { const w = this.font.weights; return w.length === 2 ? (this.R.next() < 0.62 ? w[0] : w[1]) : w[0]; }
 
   layout() {
-    const raw = String(this.o.text).replace(/\r\n/g, "\n").replace(/\n+$/, "").split("\n");
+    const rawText = String(this.o.text).replace(/\r\n/g, "\n").replace(/\n+$/, ""), raw = rawText.split("\n");
     this.items = parseItems(raw, this.o.tidy); this.warnings = [];
+    if (this.o.dir === "rtl" || this.o.dir === "ltr") this.pageDir = this.o.dir;
+    else { const ar = (rawText.match(new RegExp(ARABIC_RE.source, "g")) || []).length, la = (rawText.match(new RegExp(LATIN_RE.source, "g")) || []).length; this.pageDir = ar > la ? "rtl" : "ltr"; }
     if (!this.items.length) { this.pages = [[]]; return this.pages; }
     let pages;
     if (this.o.pages === 0) { this.setSize(this.sizeUser); pages = this.greedy(this.wrapAll()); }
@@ -401,8 +448,10 @@ class Handwriter {
     if (item.blank) return [null];
     const label = item.label, textX = label ? LABEL_X + this.measure(label) + 24 : LABEL_X, out = [], space = this.measure(" ");
     let first = true;
-    const push = cur => { out.push({ words: cur, startX: (first && label) ? LABEL_X : textX, textX, label: first ? label : null }); first = false; };
+    let dir = "ltr";
+    const push = cur => { out.push({ words: cur, startX: (first && label) ? LABEL_X : textX, textX, label: first ? label : null, dir }); first = false; };
     for (const ln of item.lines) {
+      dir = textDirection(ln, this.pageDir);
       let cur = [], curW = 0;
       for (const w of ln.split(/\s+/)) {
         const ww = this.measure(w);
@@ -434,18 +483,21 @@ class Handwriter {
     return pages;
   }
 
-  drawGlyph(ink, ch, p, x, baselineY) {
+  drawGlyph(ink, ch, p, x, baselineY, arabic) {
     const R = this.R, fs = this.fs, gc = this.gc, g = this.gctx, tc = this.tc, t = this.tctx;
+    const adv = (arabic ? this.measureAr(ch, p.weight) : this.mctx.measureText(ch).width) * S * p.sx * this.narrow;
+    const need = Math.ceil(adv + 1.8 * fs * S);
+    if (need > gc.width) this.sizeCanvases(need);
     const ox = fs * 0.8 * S, oy = fs * 1.5 * S;
     g.clearRect(0, 0, gc.width, gc.height);
     g.save(); g.translate(ox, oy); g.rotate(p.rot); g.transform(1, 0, -p.shear, 1, 0, 0); g.scale(p.sx * this.narrow, p.sy);
-    g.font = `${p.weight} ${fs * S}px "${this.font.name}"`; g.textBaseline = "alphabetic"; g.fillStyle = "#000"; g.fillText(ch, 0, 0);
+    g.font = arabic ? `${p.weight} ${this.arFs * S}px "${this.arFont.name}"` : `${p.weight} ${fs * S}px "${this.font.name}"`;
+    g.direction = arabic ? "rtl" : "ltr"; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillStyle = "#000"; g.fillText(ch, 0, 0);
     if (p.bold > 0.05) { g.lineWidth = p.bold * S; g.strokeStyle = "#000"; g.lineJoin = "round"; g.strokeText(ch, 0, 0); }
     g.restore();
     // the hand wobbles: slide thin horizontal strips sideways, then thin vertical strips up and down
-    const adv = this.mctx.measureText(ch).width * S * p.sx * this.narrow;
     const x0 = Math.max(0, Math.floor(ox - 0.45 * fs * S)), x1 = Math.min(gc.width, Math.ceil(ox + adv + 0.5 * fs * S));
-    const y0 = Math.max(0, Math.floor(oy - 1.25 * fs * S)), y1 = Math.min(gc.height, Math.ceil(oy + 0.6 * fs * S));
+    const y0 = Math.max(0, Math.floor(oy - 1.25 * fs * S)), y1 = Math.min(gc.height, Math.ceil(oy + (arabic ? 0.95 : 0.6) * fs * S));
     const a = p.warp * S, strip = 2 * S;
     const ph1 = R.uniform(0, 6.28), ph2 = R.uniform(0, 6.28), f1 = R.uniform(0.012, 0.03), f2 = R.uniform(0.03, 0.07);
     t.clearRect(0, 0, tc.width, tc.height);
@@ -459,36 +511,60 @@ class Handwriter {
     }
     ink.globalAlpha = 1;
   }
-  writeLine(ink, words, startX, textX, row, label) {
+  glyphParams(weight, wordBold, big) {
+    const R = this.R, M = this.mess;
+    return { weight, bold: Math.max(0, wordBold + R.gauss(0, 0.1)),
+      shear: this.baseSlant + R.gauss(0, 0.045 * M), rot: R.gauss(0, 2.2 * (0.35 + M)) * Math.PI / 180,
+      sx: Math.max(0.8, R.gauss(1, 0.045 * (0.5 + M))) * (big ? 1.12 : 1), sy: Math.max(0.8, R.gauss(1, 0.05 * (0.5 + M))) * (big ? 1.12 : 1),
+      warp: 0.7 + 1.7 * M, intensity: 1 };
+  }
+  writeLine(ink, words, startX, textX, row, label, lineDir) {
+    // On an Arabic page the line is right-aligned: startX and textX are then distances from the right edge.
     const R = this.R, M = this.mess, baseline = RULES[row] - R.uniform(1, 4), slope = R.gauss(0, 0.0045 * (0.3 + M)), drift = noise1d(PW, 260, R);
-    const spaceW = this.mctx.measureText(" ").width * this.narrow;
-    let pen = startX;
-    const list = label ? [label, ...words] : words;
-    list.forEach((word, wi) => {
-      const isLabel = label && wi === 0, wordDy = R.gauss(0, 1.8 * (0.3 + M)), wordInt = R.uniform(0.8, 1.0), wordBold = R.uniform(-0.3, 0.7), wWeight = this.pickWeight();
-      let prev = null;
-      for (const ch of word) {
-        const big = R.next() < 0.05 * M;
-        const p = { weight: R.next() < 0.92 ? wWeight : this.pickWeight(), bold: Math.max(0, wordBold + R.gauss(0, 0.1)),
-          shear: this.baseSlant + R.gauss(0, 0.045 * M), rot: R.gauss(0, 2.2 * (0.35 + M)) * Math.PI / 180,
-          sx: Math.max(0.8, R.gauss(1, 0.045 * (0.5 + M))) * (big ? 1.12 : 1), sy: Math.max(0.8, R.gauss(1, 0.05 * (0.5 + M))) * (big ? 1.12 : 1),
-          warp: 0.7 + 1.7 * M, intensity: wordInt * R.uniform(0.82, 1) };
-        const dy = wordDy + R.gauss(0, 1.5 * (0.3 + M)) + (pen - startX) * slope + (drift[Math.min(Math.max(pen | 0, 0), PW - 1)] - 0.5) * 3;
-        this.drawGlyph(ink, ch, p, pen, baseline + dy);
-        pen += this.advance(prev, ch) * R.uniform(0.95, 1.07) + R.gauss(0, 1.2 * M);
-        prev = ch;
+    const spaceW = this.mctx.measureText(" ").width * this.narrow, rtlPage = this.pageDir === "rtl";
+    const pieces = []; let pen = 0;
+    for (const word of visualOrder(words, lineDir || "ltr")) {
+      const arabic = isArabic(word), wordDy = R.gauss(0, 1.8 * (0.3 + M)), wordInt = R.uniform(0.8, 1.0), wordBold = R.uniform(-0.3, 0.7), wWeight = this.pickWeight();
+      const driftAt = x => (drift[Math.min(Math.max(x | 0, 0), PW - 1)] - 0.5) * 3;
+      if (arabic) {   // a joined-up word is one stroke: it tilts and leans less than a single letter
+        const p = this.glyphParams(this.pickArWeight(), wordBold + 0.15, false); p.rot *= 0.6; p.shear *= 0.4; p.intensity = wordInt;
+        pieces.push({ x: pen, dy: wordDy + pen * slope + driftAt(pen), text: word, p, arabic: true });
+        pen += this.measureAr(word, p.weight) * this.narrow * R.uniform(0.97, 1.05);
+      } else {
+        let prev = null;
+        for (const ch of word) {
+          const p = this.glyphParams(R.next() < 0.92 ? wWeight : this.pickWeight(), wordBold, R.next() < 0.05 * M); p.intensity = wordInt * R.uniform(0.82, 1);
+          pieces.push({ x: pen, dy: wordDy + R.gauss(0, 1.5 * (0.3 + M)) + pen * slope + driftAt(pen), text: ch, p, arabic: false });
+          pen += this.advance(prev, ch) * R.uniform(0.95, 1.07) + R.gauss(0, 1.2 * M);
+          prev = ch;
+        }
       }
-      this.maxPen = Math.max(this.maxPen, pen);
-      pen = isLabel ? textX : pen + spaceW * R.uniform(0.95, 1.35);
-    });
+      pen += spaceW * R.uniform(0.95, 1.35);
+    }
+    const width = pen, lineLeft = rtlPage ? PW - textX - width : (label ? textX : startX);
+    for (const pc of pieces) this.drawGlyph(ink, pc.text, pc.p, lineLeft + pc.x, baseline + pc.dy, pc.arabic);
+    this.maxPen = Math.max(this.maxPen, lineLeft + width); this.minPen = Math.min(this.minPen, lineLeft);
+    if (label) {   // the number sits at the margin, whichever side that is
+      const wWeight2 = this.pickWeight(), wordBold2 = R.uniform(-0.3, 0.7), wordDy2 = R.gauss(0, 1.8 * (0.3 + M)), lp = []; let lw = 0, prev = null;
+      for (const ch of label) {
+        const p = this.glyphParams(wWeight2, wordBold2, false); p.intensity = R.uniform(0.85, 1);
+        lp.push({ x: lw, dy: wordDy2 + R.gauss(0, 1.5 * (0.3 + M)), text: ch, p });
+        lw += this.advance(prev, ch) * R.uniform(0.95, 1.07); prev = ch;
+      }
+      const lx = rtlPage ? PW - startX - lw : startX;
+      for (const pc of lp) this.drawGlyph(ink, pc.text, pc.p, lx + pc.x, baseline + pc.dy, false);
+      this.maxPen = Math.max(this.maxPen, lx + lw); this.minPen = Math.min(this.minPen, lx);
+    }
   }
 
   async renderPage(rows, idx, report) {
     const R = this.R, M = this.mess, note = report || (() => {});
+    const rtl = this.pageDir === "rtl", marginX = rtl ? PW - MARGIN_X : MARGIN_X;
     // ---- paper
     const paper = mk(PW, PH), pc = paper.getContext("2d");
     pc.fillStyle = "#fbfbf9"; pc.fillRect(0, 0, PW, PH);
-    let lg = pc.createLinearGradient(0, 0, PW, 0); lg.addColorStop(0, "rgba(0,0,0,.08)"); lg.addColorStop(1, "rgba(0,0,0,0)"); pc.fillStyle = lg; pc.fillRect(0, 0, PW, PH);
+    let lg = rtl ? pc.createLinearGradient(PW, 0, 0, 0) : pc.createLinearGradient(0, 0, PW, 0);
+    lg.addColorStop(0, "rgba(0,0,0,.08)"); lg.addColorStop(1, "rgba(0,0,0,0)"); pc.fillStyle = lg; pc.fillRect(0, 0, PW, PH);
     lg = pc.createLinearGradient(0, 0, 0, PH); lg.addColorStop(0, "rgba(0,0,0,0)"); lg.addColorStop(1, "rgba(0,0,0,.03)"); pc.fillStyle = lg; pc.fillRect(0, 0, PW, PH);
     pc.globalAlpha = 0.09; pc.drawImage(noiseAlpha(PW, PH, 520, R, [0, 0, 0], 3), 0, 0);
     pc.globalAlpha = 0.035; pc.fillStyle = grainPattern(pc, R); pc.fillRect(0, 0, PW, PH); pc.globalAlpha = 1;
@@ -498,23 +574,23 @@ class Handwriter {
       for (let x = 0; x <= PW; x += 6) { const yy = y + (wob[Math.min(x, PW - 1)] - 0.5) * 2.2; x ? pc.lineTo(x, yy) : pc.moveTo(x, yy); }
       pc.stroke();
     }
-    pc.strokeStyle = "rgba(236,96,108,.69)"; pc.beginPath(); pc.moveTo(MARGIN_X, 0); pc.lineTo(MARGIN_X + R.uniform(-2, 2), PH); pc.stroke();
+    pc.strokeStyle = "rgba(236,96,108,.69)"; pc.beginPath(); pc.moveTo(marginX, 0); pc.lineTo(marginX + R.uniform(-2, 2), PH); pc.stroke();
     note(0.05, "paper ready");
 
     // ---- writing
     const inkC = mk(PW, PH), ink = inkC.getContext("2d"); ink.imageSmoothingEnabled = true; ink.imageSmoothingQuality = "high";
-    this.maxPen = 0;
+    this.maxPen = 0; this.minPen = PW;
     let row = FIRST_ROW;
     for (let i = 0; i < rows.length; i++) {
       const ln = rows[i];
-      if (ln) this.writeLine(ink, ln.words, ln.startX, ln.textX, row, ln.label);
+      if (ln) this.writeLine(ink, ln.words, ln.startX, ln.textX, row, ln.label, ln.dir);
       row++;
       if (i % 3 === 2 || i === rows.length - 1) { note(0.05 + 0.7 * (i + 1) / rows.length, `writing line ${i + 1} of ${rows.length}`); await tick(); }
     }
     const lastRow = row;
     // stray specks of ink
     ink.fillStyle = "#000";
-    for (let i = 0, n = 6 + 14 * M; i < n; i++) { const x = R.uniform(MARGIN_X, PW - 60), y = R.uniform(RULES[1], PH - 60), r = R.uniform(0.5, 1.4); ink.globalAlpha = R.uniform(0.15, 0.45); ink.beginPath(); ink.arc(x, y, r, 0, 6.29); ink.fill(); }
+    for (let i = 0, n = 6 + 14 * M; i < n; i++) { const x = R.uniform(60, PW - 60), y = R.uniform(RULES[1], PH - 60), r = R.uniform(0.5, 1.4); ink.globalAlpha = R.uniform(0.15, 0.45); ink.beginPath(); ink.arc(x, y, r, 0, 6.29); ink.fill(); }
     ink.globalAlpha = 1;
     // pen pressure: lighter patches and fine ballpoint streaks
     ink.globalCompositeOperation = "destination-out";
@@ -538,14 +614,19 @@ class Handwriter {
     sc.globalAlpha = 0.25; sc.drawImage(noiseAlpha(SW, SH, 300, R, [255, 255, 255], 2), 0, 0);
     sc.globalCompositeOperation = "source-over"; sc.globalAlpha = 1;
     const hasFilter = "filter" in sc;
+    // binding shadow, sheet shadow and coil are drawn with the binding on the left, then mirrored for an Arabic page
+    const sheetX = rtl ? SW - SX - PW : SX;
+    sc.save(); if (rtl) { sc.translate(SW, 0); sc.scale(-1, 1); }
     if (hasFilter) sc.filter = "blur(10px)"; sc.fillStyle = "rgba(22,18,16,.92)"; sc.fillRect(SX - 130, -30, 132, SH + 60);
     if (hasFilter) sc.filter = "blur(6px)"; sc.fillStyle = "rgba(0,0,0,.47)"; sc.fillRect(SX + 6, SY + 8, PW, PH);
     if (hasFilter) sc.filter = "none";
+    sc.restore();
     // the sheet, gently bent so lines and writing curve together
     const bend = noise1d(PH, 520, R);
-    for (let y = 0; y < PH; y += 4) { const dx = (bend[y] - 0.5) * 7; sc.drawImage(paper, 0, y, PW, 4, SX + dx, SY + y, PW, 4); }
+    for (let y = 0; y < PH; y += 4) { const dx = (bend[y] - 0.5) * 7; sc.drawImage(paper, 0, y, PW, 4, sheetX + dx, SY + y, PW, 4); }
     paper.width = 0;
     // coil through punched holes
+    sc.save(); if (rtl) { sc.translate(SW, 0); sc.scale(-1, 1); }
     for (let hy = SY + 48; hy < SY + PH; hy += 80) {
       sc.fillStyle = "rgba(70,62,58,.43)"; rrect(sc, SX + 14, hy - 14, 48, 28, 11); sc.fill();
       sc.fillStyle = "rgb(26,24,24)"; rrect(sc, SX + 17, hy - 12, 42, 24, 10); sc.fill();
@@ -554,12 +635,13 @@ class Handwriter {
       sc.strokeStyle = "rgb(118,118,124)"; sc.lineWidth = 2; sc.beginPath(); sc.moveTo(SX + 20, hy + 3); sc.quadraticCurveTo(SX - 10, hy + 10, SX - 25, hy + 17); sc.quadraticCurveTo(SX - 55, hy + 27, SX - 90, hy + 31); sc.stroke();
       sc.strokeStyle = "rgb(8,8,10)"; sc.lineWidth = 8; sc.beginPath(); sc.ellipse(SX - 66, hy + 30, 26, 28, 0, 60 * Math.PI / 180, 250 * Math.PI / 180); sc.stroke();
     }
+    sc.restore();
     note(0.9, "notebook on the desk"); await tick();
 
     // ---- camera
-    const angle = R.uniform(-1.6, -0.6) * Math.PI / 180, key = R.uniform(0.008, 0.02);
+    const angle = R.uniform(-1.6, -0.6) * Math.PI / 180 * (rtl ? -1 : 1), key = R.uniform(0.008, 0.02), cropX = rtl ? SW - CROP_X - PHOTO_W : CROP_X;
     const photo = mk(PHOTO_W, PHOTO_H), px = photo.getContext("2d"); px.imageSmoothingQuality = "high";
-    px.save(); px.translate(-CROP_X, -CROP_Y); px.translate(SW / 2, SH / 2); px.rotate(angle); px.translate(-SW / 2, -SH / 2);
+    px.save(); px.translate(-cropX, -CROP_Y); px.translate(SW / 2, SH / 2); px.rotate(angle); px.translate(-SW / 2, -SH / 2);
     for (let y = 0; y < SH; y += 4) { const s = 1 + key * ((y + 2 - SH / 2) / (SH / 2)); px.drawImage(scene, 0, y, SW, 4, SW / 2 - (SW / 2) * s, y, SW * s, 4.5); }
     px.restore(); scene.width = 0;
     const cx = PHOTO_W / 2, cy = PHOTO_H / 2, rg = px.createRadialGradient(cx, cy, PHOTO_W * 0.35, cx, cy, PHOTO_H * 0.78);
@@ -568,10 +650,14 @@ class Handwriter {
     const img = px.getImageData(0, 0, PHOTO_W, PHOTO_H), d = img.data;
     for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * 7; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
     px.putImageData(img, 0, 0);
-    let outW = PHOTO_W, outH = PHOTO_H;
-    if (this.o.crop && this.pages.length === 1 && lastRow < 14) { outW = Math.min(PHOTO_W, Math.max(1000, this.maxPen + SX - CROP_X + 380)) | 0; outH = Math.min(PHOTO_H, Math.max(520, (lastRow + 3) * LINE_GAP)) | 0; }
+    let outW = PHOTO_W, outH = PHOTO_H, outX = 0;
+    if (this.o.crop && this.pages.length === 1 && lastRow < 14) {
+      outH = Math.min(PHOTO_H, Math.max(520, (lastRow + 3) * LINE_GAP)) | 0;
+      if (rtl) { outX = Math.max(0, Math.min(PHOTO_W - 1000, this.minPen + sheetX - cropX - 380)) | 0; outW = PHOTO_W - outX; }
+      else outW = Math.min(PHOTO_W, Math.max(1000, this.maxPen + SX - CROP_X + 380)) | 0;
+    }
     const out = mk(outW, outH), oc = out.getContext("2d");
-    if ("filter" in oc) oc.filter = "blur(0.5px)"; oc.drawImage(photo, 0, 0); photo.width = 0;
+    if ("filter" in oc) oc.filter = "blur(0.5px)"; oc.drawImage(photo, -outX, 0); photo.width = 0;
     note(1, "photo taken");
     const blob = await new Promise(res => out.toBlob(res, this.o.format === "png" ? "image/png" : "image/jpeg", 0.86));
     out.width = 0;
@@ -587,6 +673,7 @@ const sliders = [["mess", "messv"], ["size", "sizev"], ["narrow", "narrowv"]];
 for (const [id, out] of sliders) { const el = $("#" + id), o = $("#" + out), upd = () => o.textContent = (+el.value).toFixed(2); el.addEventListener("input", upd); upd(); }
 const sel = $("#font");
 for (const [key, f] of Object.entries(FONTS)) { const op = document.createElement("option"); op.value = key; op.textContent = f.label; sel.appendChild(op); }
+for (const [key, f] of Object.entries(ARABIC_FONTS)) { const op = document.createElement("option"); op.value = key; op.textContent = f.label; $("#arfont").appendChild(op); }
 let saved = null; try { saved = localStorage.getItem("hw-text"); } catch (e) {}
 $("#text").value = saved || SAMPLE;
 $("#text").addEventListener("input", () => { try { localStorage.setItem("hw-text", $("#text").value); } catch (e) {} });
@@ -597,14 +684,15 @@ document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", ()
 function readOpts() {
   return { text: $("#text").value, pages: Math.max(0, Math.min(20, +$("#pages").value || 0)), gap: +$("#gap").value, font: $("#font").value,
     seed: +$("#seed").value || 0, mess: +$("#mess").value, size: +$("#size").value, narrow: +$("#narrow").value, ink: $("#ink").value,
-    format: $("#format").value, crop: $("#crop").checked, fit: $("#fit").checked, tidy: true };
+    format: $("#format").value, crop: $("#crop").checked, fit: $("#fit").checked, tidy: true, arabic_font: $("#arfont").value, dir: "auto" };
 }
 function setStatus(msg, isError) { const s = $("#status"); s.textContent = msg; s.className = "status" + (isError ? " error" : ""); }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600); }
 
-async function ensureFont(f) {
+async function ensureFont(f, af) {
   const loads = f.weights.map(w => document.fonts.load(`${w} 40px "${f.name}"`));
-  await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 6000))]);
+  if (af) loads.push(...af.weights.map(w => document.fonts.load(`${w} 40px "${af.name}"`, "\u0627\u0644\u0639\u0631\u0628\u064a\u0629")));
+  await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 8000))]);
 }
 
 async function generate() {
@@ -616,7 +704,7 @@ async function generate() {
   results = []; zipBlob = null; $("#pagesBox").innerHTML = "";
   try {
     setStatus("loading the handwriting...");
-    await ensureFont(FONTS[o.font] || FONTS.kalam);
+    await ensureFont(FONTS[o.font] || FONTS.kalam, isArabic(o.text) ? (ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.arefruqaa) : null);
     const hw = new Handwriter(o), pages = hw.layout(), n = pages.length;
     if (hw.warnings.length) { $("#warn").hidden = false; $("#warn").textContent = hw.warnings.join(" "); }
     for (let i = 0; i < n; i++) {
@@ -695,7 +783,7 @@ function renderThumbs() {
   imgFiles.forEach((f, i) => {
     const d = document.createElement("div"); d.className = "thumb";
     const im = document.createElement("img"); im.src = URL.createObjectURL(f); im.alt = f.name;
-    const x = document.createElement("button"); x.type = "button"; x.className = "x"; x.textContent = "×"; x.title = "Remove";
+    const x = document.createElement("button"); x.type = "button"; x.className = "x"; x.textContent = "\u00d7"; x.title = "Remove";
     x.addEventListener("click", () => { imgFiles.splice(i, 1); renderThumbs(); });
     d.appendChild(im); d.appendChild(x); box.appendChild(d);
   });
@@ -703,7 +791,8 @@ function renderThumbs() {
 }
 function updateOcrNote() {
   const n = $("#ocrNote");
-  if (ocrEngine === "claude") n.textContent = "Claude reads the text out of your images. The first time, claude.ai asks you to allow it. The text lands in the \"Type text\" tab so you can fix mistakes before generating.";
+  $("#ocrlangRow").hidden = ocrEngine === "claude";
+  if (ocrEngine === "claude") n.textContent = "Claude reads the text out of your images, in English or Arabic. The first time, claude.ai asks you to allow it. The text lands in the \"Type text\" tab so you can fix mistakes before generating.";
   else if (ocrEngine === "tesseract") n.textContent = "The text is read on your device; the first use downloads the reader (about 15 MB). It lands in the \"Type text\" tab so you can fix mistakes before generating.";
   else if (ocrEngine === "none") n.textContent = "Reading images is not available in this view: it needs Claude to be allowed for this page. You can still type or paste the text.";
   $("#read").disabled = !imgFiles.length || (ocrEngine !== "claude" && ocrEngine !== "tesseract");
@@ -727,8 +816,8 @@ async function prepImage(file, maxLong, grey) {
   return c;
 }
 function cleanOcrText(raw) {
-  const lines = raw.replace(/\r/g, "").split("\n").map(l => l.replace(/[•●▪‣⁃·]/g, "-").replace(/[ \t]+/g, " ").trim());
-  const starts = /^(\d{1,3}\s?[-.)]|[-*]|\(\d{1,3}\)|[a-zA-Z][.)])\s/;
+  const lines = raw.replace(/\r/g, "").split("\n").map(l => l.replace(/[\u2022\u25cf\u25aa\u2023\u2043\u00b7]/g, "-").replace(/[ \t]+/g, " ").trim());
+  const starts = /^([\d\u0660-\u0669]{1,3}\s?[-.)]|[-*]|\([\d\u0660-\u0669]{1,3}\)|[a-zA-Z][.)])\s/;
   const out = []; let para = [];
   const flush = () => { if (para.length) out.push(para.join(" ")); para = []; };
   for (const l of lines) { if (!l) { flush(); continue; } if (starts.test(l)) { flush(); para = [l]; } else para.push(l); }
@@ -740,7 +829,7 @@ function cleanOcrText(raw) {
   }
   return out.join("\n");
 }
-const READ_PROMPT = "The attached images are photos or screenshots of typed text, such as notes, answers or a document. Transcribe every word exactly as written, in reading order, as plain text. Keep each numbered or bulleted item on its own line with its number or bullet. Join the wrapped lines of a paragraph into one line. Do not add headings, comments, markdown or anything that is not in the images. Output only the transcription.";
+const READ_PROMPT = "The attached images are photos or screenshots of typed text, such as notes, answers or a document, in English, Arabic or both. Transcribe every word exactly as written, in the original language and script, in reading order, as plain text. Keep each numbered or bulleted item on its own line with its number or bullet. Join the wrapped lines of a paragraph into one line. Do not add headings, comments, markdown, translations or anything that is not in the images. Output only the transcription.";
 async function readWithClaude(files, st) {
   const max = (imageCaps && imageCaps.maxCount) || 4, parts = [];
   for (let i = 0; i < files.length; i += max) {
@@ -755,7 +844,7 @@ async function readWithClaude(files, st) {
 async function readWithTesseract(files, st) {
   st.textContent = "loading the reader (the first time downloads about 15 MB)...";
   await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-  const worker = await Tesseract.createWorker("eng", 1, { logger: m => { if (m.status === "recognizing text") st.textContent = `reading... ${Math.round(m.progress * 100)}%`; else if (m.status) st.textContent = m.status + "..."; } });
+  const worker = await Tesseract.createWorker($("#ocrlang").value, 1, { logger: m => { if (m.status === "recognizing text") st.textContent = `reading... ${Math.round(m.progress * 100)}%`; else if (m.status) st.textContent = m.status + "..."; } });
   const parts = [];
   for (let i = 0; i < files.length; i++) { st.textContent = `reading image ${i + 1} of ${files.length}...`; const { data } = await worker.recognize(await prepImage(files[i], 2200, true)); parts.push(data.text); }
   await worker.terminate();

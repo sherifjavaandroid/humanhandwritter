@@ -16,7 +16,18 @@ python app.py
 
 It opens http://127.0.0.1:8765/ in your browser. Paste your text, pick the number of pages and a handwriting style, press **Generate pages**, then save each page or download them all as a zip. Generated images are kept in the `output/` folder, one sub-folder per job.
 
-Needs Python 3 with Pillow and numpy (`pip install pillow numpy`). Nothing else.
+Needs Python 3 with Pillow and numpy, plus the two small Arabic shaping packages:
+
+```
+pip install pillow numpy arabic-reshaper python-bidi
+```
+
+## Arabic
+
+Arabic text is written joined up, right to left, and a page that is mostly Arabic becomes an Arabic notebook page with the
+margin and the coil on the right. English words inside Arabic lines keep their place. Pick the Arabic hand separately from
+the Latin one. On Linux (where Pillow has the raqm layout engine, as on the server) all three Arabic hands work; on Windows
+without raqm only Amiri is available, because the other fonts rely on OpenType shaping.
 
 ## Command line
 
