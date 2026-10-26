@@ -87,6 +87,17 @@
   .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 11; max-width: 90vw; }
   .toast.show { opacity: 1; }
   small.tip { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tab { background: none; color: var(--muted); border-radius: 8px 8px 0 0; padding: 8px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { background: var(--accent-soft); filter: none; }
+  .tab.active { color: var(--accent-deep); border-bottom-color: var(--accent); }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 24px 16px; text-align: center; color: var(--muted); background: var(--card); }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop p { margin: 0 0 6px; }
+  .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .thumb { position: relative; }
+  .thumb img { height: 76px; max-width: 140px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .thumb .x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; padding: 0; line-height: 20px; background: var(--fg); color: var(--bg); font-size: 14px; }
 </style>
 
 <div class="wrap">
@@ -97,12 +108,28 @@
 
   <main>
     <section class="panel">
-      <h2>Your text</h2>
-      <textarea id="text" spellcheck="false" aria-label="Text to write"></textarea>
-      <div class="hint">
-        Start a line with a number like <code>12-</code> to begin a numbered answer. Lines without a number continue the answer above.
-        Definitions such as <code>RAM: ... ROM: ...</code> are each put on their own line.
-        <button id="reset" class="small" type="button">Reset to sample</button>
+      <div class="tabs" role="tablist">
+        <button class="tab active" type="button" role="tab" data-tab="text" aria-selected="true">Type text</button>
+        <button class="tab" type="button" role="tab" data-tab="image" aria-selected="false">From image</button>
+      </div>
+      <div id="tab-text">
+        <textarea id="text" spellcheck="false" aria-label="Text to write"></textarea>
+        <div class="hint">
+          Start a line with a number like <code>12-</code> to begin a numbered answer. Lines without a number continue the answer above.
+          Definitions such as <code>RAM: ... ROM: ...</code> are each put on their own line.
+          <button id="reset" class="small" type="button">Reset to sample</button>
+        </div>
+      </div>
+      <div id="tab-image" hidden>
+        <div class="drop" id="drop">
+          <input type="file" id="imgs" accept="image/*" multiple hidden>
+          <p>Drop screenshots or photos of typed text here, paste them, or <button id="pick" type="button" class="small">choose files</button></p>
+          <small>Clear printed or screen text in English works best. Several images are read in order.</small>
+        </div>
+        <div class="thumbs" id="thumbs"></div>
+        <button id="read" class="primary" type="button" disabled>Read text from images</button>
+        <div class="status" id="ocrStatus" aria-live="polite"></div>
+        <small class="tip" id="ocrNote" style="margin-bottom:14px">Checking whether images can be read here...</small>
       </div>
 
       <div class="row">
@@ -644,9 +671,128 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") $("#lightbox
 $("#go").addEventListener("click", generate);
 $("#zip").addEventListener("click", saveZip);
 
+// ------------------------------------------------------------ From image: read typed text out of screenshots and photos
+const tabs = document.querySelectorAll(".tab");
+tabs.forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+function showTab(name) {
+  tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle("active", on); t.setAttribute("aria-selected", on); });
+  $("#tab-text").hidden = name !== "text"; $("#tab-image").hidden = name !== "image";
+}
+let imgFiles = [], sampleFn = null, imageCaps = null, ocrEngine = "pending";
+const drop = $("#drop"), fileIn = $("#imgs");
+$("#pick").addEventListener("click", () => fileIn.click());
+fileIn.addEventListener("change", () => { addFiles(fileIn.files); fileIn.value = ""; });
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+document.addEventListener("paste", e => {
+  const fs = [...((e.clipboardData && e.clipboardData.files) || [])].filter(f => f.type.startsWith("image/"));
+  if (fs.length) { e.preventDefault(); showTab("image"); addFiles(fs); }
+});
+function addFiles(list) { for (const f of list) if (f.type.startsWith("image/")) imgFiles.push(f); renderThumbs(); }
+function renderThumbs() {
+  const box = $("#thumbs"); box.innerHTML = "";
+  imgFiles.forEach((f, i) => {
+    const d = document.createElement("div"); d.className = "thumb";
+    const im = document.createElement("img"); im.src = URL.createObjectURL(f); im.alt = f.name;
+    const x = document.createElement("button"); x.type = "button"; x.className = "x"; x.textContent = "×"; x.title = "Remove";
+    x.addEventListener("click", () => { imgFiles.splice(i, 1); renderThumbs(); });
+    d.appendChild(im); d.appendChild(x); box.appendChild(d);
+  });
+  updateOcrNote();
+}
+function updateOcrNote() {
+  const n = $("#ocrNote");
+  if (ocrEngine === "claude") n.textContent = "Claude reads the text out of your images. The first time, claude.ai asks you to allow it. The text lands in the \"Type text\" tab so you can fix mistakes before generating.";
+  else if (ocrEngine === "tesseract") n.textContent = "The text is read on your device; the first use downloads the reader (about 15 MB). It lands in the \"Type text\" tab so you can fix mistakes before generating.";
+  else if (ocrEngine === "none") n.textContent = "Reading images is not available in this view: it needs Claude to be allowed for this page. You can still type or paste the text.";
+  $("#read").disabled = !imgFiles.length || (ocrEngine !== "claude" && ocrEngine !== "tesseract");
+}
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("could not load the reader. Check the internet connection.")); document.head.appendChild(s);
+  });
+}
+async function prepImage(file, maxLong, grey) {
+  const bmp = await createImageBitmap(file);
+  const long = Math.max(bmp.width, bmp.height), scale = grey ? Math.min(3, Math.max(1, maxLong / long)) : Math.min(1, maxLong / long);
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(bmp, 0, 0, c.width, c.height); if (bmp.close) bmp.close();
+  if (grey) {   // bigger, grey and higher contrast: what OCR likes
+    const img = x.getImageData(0, 0, c.width, c.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { let g = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] - 128) * 1.25 + 128; d[i] = d[i + 1] = d[i + 2] = g < 0 ? 0 : g > 255 ? 255 : g; }
+    x.putImageData(img, 0, 0);
+  }
+  return c;
+}
+function cleanOcrText(raw) {
+  const lines = raw.replace(/\r/g, "").split("\n").map(l => l.replace(/[•●▪‣⁃·]/g, "-").replace(/[ \t]+/g, " ").trim());
+  const starts = /^(\d{1,3}\s?[-.)]|[-*]|\(\d{1,3}\)|[a-zA-Z][.)])\s/;
+  const out = []; let para = [];
+  const flush = () => { if (para.length) out.push(para.join(" ")); para = []; };
+  for (const l of lines) { if (!l) { flush(); continue; } if (starts.test(l)) { flush(); para = [l]; } else para.push(l); }
+  flush();
+  for (let i = 0; i < out.length; i++) out[i] = out[i].replace(/^(\d{1,3})\s+-\s+/, "$1- ");
+  if (!out.some(l => /^\d{1,3}-\s/.test(l))) {   // "1." / "1)" counting up from 1 become "1-" answers
+    let expect = 1;
+    for (let i = 0; i < out.length; i++) { const m = out[i].match(/^(\d{1,3})\s?[.)]\s+(.*)$/); if (m && +m[1] === expect) { out[i] = `${m[1]}- ${m[2]}`; expect++; } }
+  }
+  return out.join("\n");
+}
+const READ_PROMPT = "The attached images are photos or screenshots of typed text, such as notes, answers or a document. Transcribe every word exactly as written, in reading order, as plain text. Keep each numbered or bulleted item on its own line with its number or bullet. Join the wrapped lines of a paragraph into one line. Do not add headings, comments, markdown or anything that is not in the images. Output only the transcription.";
+async function readWithClaude(files, st) {
+  const max = (imageCaps && imageCaps.maxCount) || 4, parts = [];
+  for (let i = 0; i < files.length; i += max) {
+    const batch = [];
+    for (const f of files.slice(i, i + max)) { const c = await prepImage(f, 1800, false); batch.push(await new Promise(r => c.toBlob(r, "image/jpeg", 0.9))); }
+    st.textContent = files.length > max ? `Claude is reading images ${i + 1} to ${Math.min(i + max, files.length)} of ${files.length}... (thinking)` : "Claude is reading the text... (thinking)";
+    const { text, truncated } = await sampleFn(READ_PROMPT, { images: batch, modelTier: "default", onText: ({ text }) => { st.textContent = `reading... ${text.length} characters so far`; } });
+    parts.push(text); if (truncated) parts.push("[the transcription was cut short]");
+  }
+  return parts.join("\n\n");
+}
+async function readWithTesseract(files, st) {
+  st.textContent = "loading the reader (the first time downloads about 15 MB)...";
+  await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  const worker = await Tesseract.createWorker("eng", 1, { logger: m => { if (m.status === "recognizing text") st.textContent = `reading... ${Math.round(m.progress * 100)}%`; else if (m.status) st.textContent = m.status + "..."; } });
+  const parts = [];
+  for (let i = 0; i < files.length; i++) { st.textContent = `reading image ${i + 1} of ${files.length}...`; const { data } = await worker.recognize(await prepImage(files[i], 2200, true)); parts.push(data.text); }
+  await worker.terminate();
+  return parts.join("\n\n");
+}
+function ocrErrorCopy(e) {
+  const map = { not_granted: "You did not allow this page to use Claude, so images cannot be read here.", rate_limited: "Claude is busy or your usage limit is reached. Try again in a little while.",
+    image_rejected: "That image was not accepted. Use a JPEG or PNG under 20 MB.", refused: "Claude declined to read this image.", images_unavailable: "This view cannot send images to Claude.",
+    session_expired: "Please sign in to claude.ai again.", sampling_disabled: "Claude is not available on this account." };
+  if (e && e.code && map[e.code]) return map[e.code];
+  return "Could not read the image: " + (e && e.message ? e.message : e);
+}
+async function readImages() {
+  if (!imgFiles.length) return;
+  const btn = $("#read"), st = $("#ocrStatus"); btn.disabled = true; st.className = "status";
+  try {
+    const raw = ocrEngine === "claude" ? await readWithClaude(imgFiles, st) : await readWithTesseract(imgFiles, st);
+    const text = cleanOcrText(raw);
+    if (!text.trim()) { st.className = "status error"; st.textContent = "No text was found. Try a sharper or larger image."; }
+    else {
+      $("#text").value = text; try { localStorage.setItem("hw-text", text); } catch (e) {}
+      showTab("text"); st.textContent = "done"; setStatus(`Text read from ${imgFiles.length} image${imgFiles.length === 1 ? "" : "s"}. Check it, then generate.`);
+    }
+  } catch (e) { st.className = "status error"; st.textContent = ocrErrorCopy(e); }
+  updateOcrNote();
+}
+$("#read").addEventListener("click", readImages);
+
 (async () => {
   try { if (window.claude && window.claude.use) downloads = await window.claude.use("downloads"); } catch (e) { downloads = null; }
   if (window.claude && !downloads) $("#savehint").hidden = false;
+  if (window.claude && window.claude.use) {
+    try { sampleFn = await window.claude.use("sample"); } catch (e) { sampleFn = null; }
+    if (sampleFn) imageCaps = await sampleFn.limits().then(c => (c && c.images) ? c.images : null).catch(() => null);
+    ocrEngine = imageCaps ? "claude" : "none";
+  } else ocrEngine = "tesseract";
+  updateOcrNote();
   if (!results.length && !busy) {   // show what the tool does right away
     $("#empty").textContent = "Writing an example page...";
     await generate();

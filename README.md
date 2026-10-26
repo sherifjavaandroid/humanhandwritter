@@ -26,6 +26,13 @@ python make_handwriting.py --file sample_text.txt --pages 6 --outdir result --ga
 python make_handwriting.py --help
 ```
 
+## From an image
+
+The "From image" tab takes screenshots or photos of typed text (several at once, dropped, pasted or picked). The text is read
+out of the images in the browser, numbered lists are turned into `1-` style answers, and the result lands in the text tab for
+checking before generating. The local/server page reads with Tesseract.js on the viewer's device (the first use downloads about
+15 MB). The online claude.ai version asks Claude to read the image instead, after the viewer allows it.
+
 ## Writing the text
 
 - A line that starts with a number like `12-` begins a numbered answer. The number goes in the margin and the following lines of that answer are indented under the text.
