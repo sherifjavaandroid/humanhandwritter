@@ -13,6 +13,9 @@ __pycache__/
 .venv/
 venv/
 
+# fonts with no known licence stay out of the public repo (copy them to the server by hand)
+fonts/ArslanWessamB.ttf
+
 # tool scratch
 .playwright-mcp/
 *.zip
