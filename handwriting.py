@@ -42,14 +42,17 @@ FONT_CHOICES = {
     "inkfree":  ("Ink Free - casual marker (Windows font)", [os.path.join(WIN_FONTS, "Inkfree.ttf")]),
     "segoe":    ("Segoe Print - childlike print (Windows font)", [os.path.join(WIN_FONTS, "segoepr.ttf")]),
 }
-# (label, files, needs_raqm): fonts without Arabic presentation-form glyphs can only be shaped by raqm
+# (label, files, needs_raqm, thicken): fonts without Arabic presentation-form glyphs can only be shaped by raqm;
+# thicken adds a uniform ballpoint stroke (fraction of the letter size) to thin, monoline fonts
 ARABIC_FONT_CHOICES = {
-    "arefruqaa":    ("Aref Ruqaa - everyday ruq'ah handwriting", ["ArefRuqaa-Regular.ttf", "ArefRuqaa-Bold.ttf"], True),
-    "amiri":        ("Amiri - naskh, like a careful student", ["Amiri-Regular.ttf"], False),
-    "scheherazade": ("Scheherazade New - clear naskh", ["ScheherazadeNew-Regular.ttf"], True),
+    "harmattan":    ("Harmattan - plain school hand, ballpoint (closest to a real pen)", ["Harmattan-Regular.ttf"], True, 0.012),
+    "vibes":        ("Vibes - quick, loose marker hand", ["Vibes-Regular.ttf"], True, 0.026),
+    "arefruqaa":    ("Aref Ruqaa - calligraphic ruq'ah", ["ArefRuqaa-Regular.ttf", "ArefRuqaa-Bold.ttf"], True, 0.0),
+    "amiri":        ("Amiri - naskh, like a careful student", ["Amiri-Regular.ttf"], False, 0.0),
+    "scheherazade": ("Scheherazade New - clear naskh", ["ScheherazadeNew-Regular.ttf"], True, 0.0),
 }
 
-DEFAULTS = dict(text="hey how r u", pages=1, gap=0, seed=7, mess=0.7, font="kalam", arabic_font="arefruqaa",
+DEFAULTS = dict(text="hey how r u", pages=1, gap=0, seed=7, mess=0.7, font="kalam", arabic_font="harmattan",
                 size=0.54, narrow=0.88, crop="auto", tidy=True, ink="#1e349e", fit=True, dir="auto")
 SIZE_MIN, SIZE_MAX = 0.40, 0.74
 
@@ -89,7 +92,7 @@ def available_fonts():
 def available_arabic_fonts():
     """{key: description} for the Arabic hands this machine can shape."""
     out = {}
-    for k, (label, files, needs_raqm) in ARABIC_FONT_CHOICES.items():
+    for k, (label, files, needs_raqm, _thicken) in ARABIC_FONT_CHOICES.items():
         if not all(_usable(_resolve(p)) for p in files):
             continue
         if needs_raqm and not HAS_RAQM:
@@ -113,12 +116,12 @@ def font_paths(name):
 
 
 def arabic_font_paths(name):
+    """-> (files, thicken) for the requested Arabic hand, or the first one this machine can shape."""
     avail = available_arabic_fonts()
-    if name in avail:
-        return [_resolve(p) for p in ARABIC_FONT_CHOICES[name][1]]
-    for key in avail:
-        return [_resolve(p) for p in ARABIC_FONT_CHOICES[key][1]]
-    return []
+    key = name if name in avail else next(iter(avail), None)
+    if key is None:
+        return [], 0.0
+    return [_resolve(p) for p in ARABIC_FONT_CHOICES[key][1]], ARABIC_FONT_CHOICES[key][3]
 
 
 def parse_color(c):
@@ -298,7 +301,7 @@ class Handwriter:
         self.crop = o["crop"]
         self.ink_rgb = parse_color(o["ink"])
         self.font_files = font_paths(o["font"])
-        self.ar_files = arabic_font_paths(o["arabic_font"])
+        self.ar_files, self.ar_thicken = arabic_font_paths(o["arabic_font"])
         self.shaper = "raqm" if HAS_RAQM else ("reshaper" if arabic_reshaper is not None else None)
         probe = ImageFont.truetype(self.font_files[0], 100)
         self.cap100 = -probe.getbbox("H", anchor="ls")[1]
@@ -306,7 +309,7 @@ class Handwriter:
         if self.ar_files:
             ap = ImageFont.truetype(self.ar_files[0], 100)
             alef100 = -ap.getbbox("\u0627", anchor="ls")[1] or self.cap100
-            self.ar_ratio = (self.cap100 * 1.25) / alef100          # alef a bit taller than a capital, as in handwriting
+            self.ar_ratio = (self.cap100 * 1.45) / alef100          # Arabic is written big: an alef spans well over a line
         self.size_user = float(o["size"])
         self._set_size(self.size_user)
         self.font_w = [0.62, 0.38] if len(self.font_files) == 2 else None
@@ -355,17 +358,19 @@ class Handwriter:
         if arabic and self.ar_big:
             fb = self.ar_big[p["font"] % len(self.ar_big)]
             s, kw = self._shape(text)
+            sw = int(round(self.ar_thicken * self.font_size * self.ar_ratio * SS * p.get("pen", 1.0)))   # ballpoint line
         else:
             fb = self.fonts_big[p["font"]]
             s, kw = text, {}
-        l, t, r, b = fb.getbbox(s, anchor="ls", **kw)
+            sw = 0
+        l, t, r, b = fb.getbbox(s, anchor="ls", stroke_width=sw, **kw)
         if r <= l or b <= t:
             return None
         pad = int(0.35 * self.font_size * SS)
         ox, oy = pad - l, pad - t
         cw, chh = (r - l) + 2 * pad, (b - t) + 2 * pad
         g = Image.new("L", (cw, chh), 0)
-        ImageDraw.Draw(g).text((ox, oy), s, font=fb, fill=255, anchor="ls", **kw)
+        ImageDraw.Draw(g).text((ox, oy), s, font=fb, fill=255, anchor="ls", stroke_width=sw, stroke_fill=255, **kw)
         k = p["shear"]
         g = g.transform(g.size, Image.AFFINE, (1, k, -k * oy, 0, 1, 0), resample=Image.BICUBIC)
         g = g.rotate(p["rot"], resample=Image.BICUBIC, center=(ox, oy))
@@ -402,8 +407,10 @@ class Handwriter:
 
     def _measure(self, word):
         if is_arabic(word):
-            # wrap with the widest Arabic weight so a bold word never overruns the margin
-            return max(self._ar_len(word, f) for f in (self.ar_base or [self.fonts_base[0]])) * self.narrow * 1.04
+            # Arabic words come out wider than the font says: stretched strokes plus the ballpoint line
+            widest = max(self._ar_len(word, f) for f in (self.ar_base or [self.fonts_base[0]]))
+            pen_w = len(split_strokes(word)) * self.ar_thicken * self.font_size * self.ar_ratio
+            return (widest * 1.07 + pen_w) * self.narrow * 1.04
         return self.fonts_base[0].getlength(word) * self.narrow * 1.04
 
     def _glyph_params(self, word_w, big=False):
@@ -444,18 +451,23 @@ class Handwriter:
                 # every stroke gets its own tilt, size, pressure and wobble, like the Latin letters do
                 n_ar = max(1, len(self.ar_base))
                 strokes = []
+                pen_press = R.uniform(0.85, 1.15)                             # how hard this word is pressed
                 for seg in split_strokes(word):
-                    p = self._glyph_params(word_w - 0.05, big=False)      # a touch bolder: Arabic hands press harder
+                    # monoline fonts get a uniform ballpoint line instead of the blur-and-threshold weight
+                    p = self._glyph_params(0.5 if self.ar_thicken else word_w - 0.05, big=False)
                     p["font"] = (fi_word if R.random() < 0.85 else self._pick_font()) % n_ar
-                    p["rot"] *= 0.9
-                    p["shear"] = p["shear"] * 0.4 + R.gauss(0, 0.03 * MESS)
-                    p["sx"] = max(0.8, R.gauss(1.0, 0.06 * (0.5 + MESS)))
+                    p["rot"] *= 1.1
+                    p["shear"] = p["shear"] * 0.3 + R.gauss(0, 0.05 * MESS)
+                    p["sx"] = max(0.8, R.gauss(1.05, 0.10 * (0.5 + MESS)))   # strokes stretch sideways, like a drawn-out connection
                     p["sy"] = max(0.8, R.gauss(1.0, 0.08 * (0.5 + MESS)))
-                    p["warp_scale"] = 0.2                                     # wobble at letter scale, not word scale
+                    p["warp"] *= 1.1
+                    p["warp_scale"] = 0.18                                    # wobble at letter scale, not word scale
+                    p["pen"] = pen_press * R.uniform(0.9, 1.1)
                     g = self._render_glyph(seg, p, arabic=True)
                     ar_fnt = self.ar_base[p["font"]] if self.ar_base else self.fonts_base[0]
-                    w = self._ar_len(seg, ar_fnt) * self.narrow * p["sx"] * R.uniform(0.97, 1.04)
-                    strokes.append((g, w, R.gauss(0, 1.4 * (0.3 + MESS)), word_int * R.uniform(0.85, 1.0)))
+                    pen_w = self.ar_thicken * self.font_size * self.ar_ratio * p["pen"]   # the ballpoint line widens every stroke a little
+                    w = (self._ar_len(seg, ar_fnt) * p["sx"] + pen_w) * self.narrow * R.uniform(0.97, 1.04)
+                    strokes.append((g, w, R.gauss(0, 2.0 * (0.3 + MESS)), word_int * R.uniform(0.85, 1.0)))
                 word_width = sum(w for _, w, _, _ in strokes)
                 x_right = pen + word_width                                    # strokes run right to left inside the word
                 for g, w, sdy, inten in strokes:
@@ -463,7 +475,7 @@ class Handwriter:
                     if g is not None:
                         dy = word_dy + sdy + x_left * slope + (line_drift[min(max(int(x_left), 0), PW - 1)] - 0.5) * 3.0
                         pieces.append((x_left, dy, g, inten))
-                    x_right = x_left + R.gauss(0, 1.2 * MESS)                 # strokes nearly touch, sometimes overlap
+                    x_right = x_left + R.gauss(0, 1.5 * MESS)                 # strokes nearly touch, sometimes overlap
                 pen += word_width
                 fnt = self.fonts_base[fi_word]
             else:

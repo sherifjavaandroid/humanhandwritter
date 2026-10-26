@@ -1,6 +1,6 @@
 <title>Handwriting Studio</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400&family=Patrick+Hand&family=Indie+Flower&family=Handlee&family=Homemade+Apple&family=Aref+Ruqaa:wght@400;700&family=Amiri&family=Scheherazade+New&family=Source+Sans+3:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400&family=Patrick+Hand&family=Indie+Flower&family=Handlee&family=Homemade+Apple&family=Vibes&family=Harmattan&family=Aref+Ruqaa:wght@400;700&family=Amiri&family=Scheherazade+New&family=Source+Sans+3:wght@400;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   /* Layout: editor and controls on the left, a shelf of generated pages on the right; stacks on phones. */
@@ -257,18 +257,20 @@ const FONTS = {
   handlee:  { name: "Handlee", weights: [400], label: "Handlee - light, quick print" },
   homemade: { name: "Homemade Apple", weights: [400], label: "Homemade Apple - joined-up cursive" },
 };
-const ARABIC_FONTS = {
-  arefruqaa:    { name: "Aref Ruqaa", weights: [400, 700], label: "Aref Ruqaa - everyday ruq'ah handwriting" },
-  amiri:        { name: "Amiri", weights: [400], label: "Amiri - naskh, like a careful student" },
-  scheherazade: { name: "Scheherazade New", weights: [400], label: "Scheherazade New - clear naskh" },
+const ARABIC_FONTS = {   // thicken: uniform ballpoint line added to thin, monoline fonts (fraction of the letter size)
+  harmattan:    { name: "Harmattan", weights: [400], thicken: 0.012, label: "Harmattan - plain school hand, ballpoint (closest to a real pen)" },
+  vibes:        { name: "Vibes", weights: [400], thicken: 0.026, label: "Vibes - quick, loose marker hand" },
+  arefruqaa:    { name: "Aref Ruqaa", weights: [400, 700], thicken: 0, label: "Aref Ruqaa - calligraphic ruq'ah" },
+  amiri:        { name: "Amiri", weights: [400], thicken: 0, label: "Amiri - naskh, like a careful student" },
+  scheherazade: { name: "Scheherazade New", weights: [400], thicken: 0, label: "Scheherazade New - clear naskh" },
 };
 const ARABIC_RE = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/;
 const LATIN_RE = /[A-Za-z\u00c0-\u024f]/;
 const isArabic = s => ARABIC_RE.test(s);
 const wordType = w => ARABIC_RE.test(w) ? "R" : LATIN_RE.test(w) ? "L" : "N";
 // letters that never join to the letter after them: the pen lifts here, so a word is written as several strokes
-const NON_JOINERS = new Set("اآأإٱدذرزوؤةءژڈڑۀەٷ");
-const MARK_RE = /[ً-ٰٟۖ-ۭ]/;
+const NON_JOINERS = new Set("\u0627\u0622\u0623\u0625\u0671\u062f\u0630\u0631\u0632\u0648\u0624\u0629\u0621\u0698\u0688\u0691\u06c0\u06d5\u0677");
+const MARK_RE = /[\u064b-\u065f\u0670\u06d6-\u06ed]/;
 function splitStrokes(word) {   // shaping each stroke alone gives the same letter forms: the cuts sit where letters do not join
   const segs = []; let cur = "", lastBase = "";
   for (const ch of word) {
@@ -372,10 +374,10 @@ class Handwriter {
     const m = mk(10, 10).getContext("2d"); m.font = `400 100px "${this.font.name}"`;
     this.cap100 = m.measureText("H").actualBoundingBoxAscent || 70;
     this.mctx = m; this.sizeUser = o.size;
-    this.arFont = ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.arefruqaa;
+    this.arFont = ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.harmattan;
     const a = mk(10, 10).getContext("2d"); a.font = `400 100px "${this.arFont.name}"`; a.direction = "rtl"; a.textAlign = "left";
     const alef100 = a.measureText("\u0627").actualBoundingBoxAscent || this.cap100;
-    this.arRatio = (this.cap100 * 1.25) / alef100;   // alef a bit taller than a capital, as in handwriting
+    this.arRatio = (this.cap100 * 1.45) / alef100;   // Arabic is written big: an alef spans well over a line
     this.actx = a;
     this.gc = mk(10, 10); this.gctx = this.gc.getContext("2d"); this.tc = mk(10, 10); this.tctx = this.tc.getContext("2d");
     this.setSize(this.sizeUser);
@@ -394,7 +396,10 @@ class Handwriter {
   }
   pickArWeight() { const w = this.arFont.weights; return w.length === 2 ? (this.R.next() < 0.6 ? w[0] : w[1]) : w[0]; }
   measureAr(w, weight) { this.actx.font = `${weight} ${this.arFs}px "${this.arFont.name}"`; return this.actx.measureText(w).width; }
-  measure(w) { return (isArabic(w) ? this.measureAr(w, Math.max(...this.arFont.weights)) : this.mctx.measureText(w).width) * this.narrow * 1.04; }
+  measure(w) {   // Arabic words come out wider than the font says: stretched strokes plus the ballpoint line
+    if (isArabic(w)) return (this.measureAr(w, Math.max(...this.arFont.weights)) * 1.07 + splitStrokes(w).length * this.arFont.thicken * this.arFs) * this.narrow * 1.04;
+    return this.mctx.measureText(w).width * this.narrow * 1.04;
+  }
   advance(prev, ch) { return (prev == null ? this.mctx.measureText(ch).width : this.mctx.measureText(prev + ch).width - this.mctx.measureText(prev).width) * this.narrow; }
   pickWeight() { const w = this.font.weights; return w.length === 2 ? (this.R.next() < 0.62 ? w[0] : w[1]) : w[0]; }
 
@@ -507,7 +512,8 @@ class Handwriter {
     g.save(); g.translate(ox, oy); g.rotate(p.rot); g.transform(1, 0, -p.shear, 1, 0, 0); g.scale(p.sx * this.narrow, p.sy);
     g.font = arabic ? `${p.weight} ${this.arFs * S}px "${this.arFont.name}"` : `${p.weight} ${fs * S}px "${this.font.name}"`;
     g.direction = arabic ? "rtl" : "ltr"; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillStyle = "#000"; g.fillText(ch, 0, 0);
-    if (p.bold > 0.05) { g.lineWidth = p.bold * S; g.strokeStyle = "#000"; g.lineJoin = "round"; g.strokeText(ch, 0, 0); }
+    const pen = arabic ? this.arFont.thicken * this.arFs * S * (p.pen || 1) : 0;   // ballpoint line on monoline Arabic fonts
+    if (p.bold > 0.05 || pen > 0) { g.lineWidth = p.bold * S + pen; g.strokeStyle = "#000"; g.lineJoin = "round"; g.lineCap = "round"; g.strokeText(ch, 0, 0); }
     g.restore();
     // the hand wobbles: slide thin horizontal strips sideways, then thin vertical strips up and down
     const x0 = Math.max(0, Math.floor(ox - 0.45 * fs * S)), x1 = Math.min(gc.width, Math.ceil(ox + adv + 0.5 * fs * S));
@@ -541,20 +547,23 @@ class Handwriter {
       const arabic = isArabic(word), wordDy = R.gauss(0, 1.8 * (0.3 + M)), wordInt = R.uniform(0.8, 1.0), wordBold = R.uniform(-0.3, 0.7), wWeight = this.pickWeight();
       const driftAt = x => (drift[Math.min(Math.max(x | 0, 0), PW - 1)] - 0.5) * 3;
       if (arabic) {   // written stroke by stroke, the pen lifting at the letters that do not join; each stroke has its own tilt, size and pressure
-        const wArW = this.pickArWeight(), strokes = [];
+        const wArW = this.pickArWeight(), strokes = [], penPress = R.uniform(0.85, 1.15);   // how hard this word is pressed
         for (const seg of splitStrokes(word)) {
-          const p = this.glyphParams(R.next() < 0.85 ? wArW : this.pickArWeight(), wordBold + 0.15, false);
-          p.rot *= 0.9; p.shear = p.shear * 0.4 + R.gauss(0, 0.03 * M);
-          p.sx = Math.max(0.8, R.gauss(1, 0.06 * (0.5 + M))); p.sy = Math.max(0.8, R.gauss(1, 0.08 * (0.5 + M)));
+          const p = this.glyphParams(R.next() < 0.85 ? wArW : this.pickArWeight(), this.arFont.thicken ? 0 : wordBold * 0.5, false);
+          p.rot *= 1.1; p.shear = p.shear * 0.3 + R.gauss(0, 0.05 * M);
+          p.sx = Math.max(0.8, R.gauss(1.05, 0.10 * (0.5 + M)));   // strokes stretch sideways, like a drawn-out connection
+          p.sy = Math.max(0.8, R.gauss(1, 0.08 * (0.5 + M)));
+          p.warp *= 1.1; p.pen = penPress * R.uniform(0.9, 1.1);
           p.intensity = wordInt * R.uniform(0.85, 1);
-          strokes.push({ seg, p, w: this.measureAr(seg, p.weight) * this.narrow * p.sx * R.uniform(0.97, 1.04), sdy: R.gauss(0, 1.4 * (0.3 + M)) });
+          const penW = this.arFont.thicken * this.arFs * p.pen;   // the ballpoint line widens every stroke a little
+          strokes.push({ seg, p, w: (this.measureAr(seg, p.weight) * p.sx + penW) * this.narrow * R.uniform(0.97, 1.04), sdy: R.gauss(0, 2.0 * (0.3 + M)) });
         }
         const wordWidth = strokes.reduce((a, s) => a + s.w, 0);
         let xRight = pen + wordWidth;   // strokes run right to left inside the word
         for (const s of strokes) {
           const xLeft = xRight - s.w;
           pieces.push({ x: xLeft, dy: wordDy + s.sdy + xLeft * slope + driftAt(xLeft), text: s.seg, p: s.p, arabic: true });
-          xRight = xLeft + R.gauss(0, 1.2 * M);   // strokes nearly touch, sometimes overlap
+          xRight = xLeft + R.gauss(0, 1.5 * M);   // strokes nearly touch, sometimes overlap
         }
         pen += wordWidth;
       } else {
@@ -731,7 +740,7 @@ async function generate() {
   results = []; zipBlob = null; $("#pagesBox").innerHTML = "";
   try {
     setStatus("loading the handwriting...");
-    await ensureFont(FONTS[o.font] || FONTS.kalam, isArabic(o.text) ? (ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.arefruqaa) : null);
+    await ensureFont(FONTS[o.font] || FONTS.kalam, isArabic(o.text) ? (ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.harmattan) : null);
     const hw = new Handwriter(o), pages = hw.layout(), n = pages.length;
     if (hw.warnings.length) { $("#warn").hidden = false; $("#warn").textContent = hw.warnings.join(" "); }
     for (let i = 0; i < n; i++) {
