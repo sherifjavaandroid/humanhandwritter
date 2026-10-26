@@ -15,3 +15,6 @@ venv/
 
 # tool scratch
 .playwright-mcp/
+*.zip
+*.jpg
+!web/*.jpg

@@ -2,6 +2,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400&family=Patrick+Hand&family=Indie+Flower&family=Handlee&family=Homemade+Apple&family=Vibes&family=Harmattan&family=Aref+Ruqaa:wght@400;700&family=Amiri&family=Scheherazade+New&family=Source+Sans+3:wght@400;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- embedded-fonts-start -->
+<!-- embedded-fonts-end -->
 <style>
   /* Layout: editor and controls on the left, a shelf of generated pages on the right; stacks on phones. */
   :root {
@@ -258,7 +260,8 @@ const FONTS = {
   homemade: { name: "Homemade Apple", weights: [400], label: "Homemade Apple - joined-up cursive" },
 };
 const ARABIC_FONTS = {   // thicken: uniform ballpoint line added to thin, monoline fonts (fraction of the letter size)
-  harmattan:    { name: "Harmattan", weights: [400], thicken: 0.012, label: "Harmattan - plain school hand, ballpoint (closest to a real pen)" },
+  arslan:       { name: "Arslan Wessam B", weights: [400], thicken: 0, label: "Arslan Wessam - real handwriting" },
+  harmattan:    { name: "Harmattan", weights: [400], thicken: 0.012, label: "Harmattan - plain school hand, ballpoint" },
   vibes:        { name: "Vibes", weights: [400], thicken: 0.026, label: "Vibes - quick, loose marker hand" },
   arefruqaa:    { name: "Aref Ruqaa", weights: [400, 700], thicken: 0, label: "Aref Ruqaa - calligraphic ruq'ah" },
   amiri:        { name: "Amiri", weights: [400], thicken: 0, label: "Amiri - naskh, like a careful student" },
@@ -374,7 +377,7 @@ class Handwriter {
     const m = mk(10, 10).getContext("2d"); m.font = `400 100px "${this.font.name}"`;
     this.cap100 = m.measureText("H").actualBoundingBoxAscent || 70;
     this.mctx = m; this.sizeUser = o.size;
-    this.arFont = ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.harmattan;
+    this.arFont = ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.arslan;
     const a = mk(10, 10).getContext("2d"); a.font = `400 100px "${this.arFont.name}"`; a.direction = "rtl"; a.textAlign = "left";
     const alef100 = a.measureText("\u0627").actualBoundingBoxAscent || this.cap100;
     this.arRatio = (this.cap100 * 1.45) / alef100;   // Arabic is written big: an alef spans well over a line
@@ -740,7 +743,7 @@ async function generate() {
   results = []; zipBlob = null; $("#pagesBox").innerHTML = "";
   try {
     setStatus("loading the handwriting...");
-    await ensureFont(FONTS[o.font] || FONTS.kalam, isArabic(o.text) ? (ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.harmattan) : null);
+    await ensureFont(FONTS[o.font] || FONTS.kalam, isArabic(o.text) ? (ARABIC_FONTS[o.arabic_font] || ARABIC_FONTS.arslan) : null);
     const hw = new Handwriter(o), pages = hw.layout(), n = pages.length;
     if (hw.warnings.length) { $("#warn").hidden = false; $("#warn").textContent = hw.warnings.join(" "); }
     for (let i = 0; i < n; i++) {

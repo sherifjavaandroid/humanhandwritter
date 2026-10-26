@@ -45,14 +45,15 @@ FONT_CHOICES = {
 # (label, files, needs_raqm, thicken): fonts without Arabic presentation-form glyphs can only be shaped by raqm;
 # thicken adds a uniform ballpoint stroke (fraction of the letter size) to thin, monoline fonts
 ARABIC_FONT_CHOICES = {
-    "harmattan":    ("Harmattan - plain school hand, ballpoint (closest to a real pen)", ["Harmattan-Regular.ttf"], True, 0.012),
+    "arslan":       ("Arslan Wessam - real handwriting", ["ArslanWessamB.ttf"], True, 0.0),   # needs raqm: few presentation forms
+    "harmattan":    ("Harmattan - plain school hand, ballpoint", ["Harmattan-Regular.ttf"], True, 0.012),
     "vibes":        ("Vibes - quick, loose marker hand", ["Vibes-Regular.ttf"], True, 0.026),
     "arefruqaa":    ("Aref Ruqaa - calligraphic ruq'ah", ["ArefRuqaa-Regular.ttf", "ArefRuqaa-Bold.ttf"], True, 0.0),
     "amiri":        ("Amiri - naskh, like a careful student", ["Amiri-Regular.ttf"], False, 0.0),
     "scheherazade": ("Scheherazade New - clear naskh", ["ScheherazadeNew-Regular.ttf"], True, 0.0),
 }
 
-DEFAULTS = dict(text="hey how r u", pages=1, gap=0, seed=7, mess=0.7, font="kalam", arabic_font="harmattan",
+DEFAULTS = dict(text="hey how r u", pages=1, gap=0, seed=7, mess=0.7, font="kalam", arabic_font="arslan",
                 size=0.54, narrow=0.88, crop="auto", tidy=True, ink="#1e349e", fit=True, dir="auto")
 SIZE_MIN, SIZE_MAX = 0.40, 0.74
 

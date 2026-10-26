@@ -26,8 +26,10 @@ pip install pillow numpy arabic-reshaper python-bidi
 
 Arabic text is written joined up, right to left, and a page that is mostly Arabic becomes an Arabic notebook page with the
 margin and the coil on the right. English words inside Arabic lines keep their place. Pick the Arabic hand separately from
-the Latin one: Harmattan (default, a plain school hand drawn with a ballpoint line), Vibes (quick marker hand), Aref Ruqaa,
-Amiri and Scheherazade New. Each word is written stroke by stroke, the pen lifting at letters that do not join, and every
+the Latin one: Arslan Wessam (default, a real handwriting font; `fonts/ArslanWessamB.ttf`, downloaded from arfonts.net with
+no known licence, so use it at your own risk), Harmattan (a plain school hand drawn with a ballpoint line), Vibes (quick
+marker hand), Aref Ruqaa, Amiri and Scheherazade New. The online page carries Arslan Wessam embedded; run
+`python embed_fonts.py` after replacing that font file. Each word is written stroke by stroke, the pen lifting at letters that do not join, and every
 stroke gets its own size, tilt and pressure. On Linux (where Pillow has the raqm layout engine, as on the server) all the
 Arabic hands work; on Windows without raqm only Amiri is available, because the other fonts rely on OpenType shaping.
 
