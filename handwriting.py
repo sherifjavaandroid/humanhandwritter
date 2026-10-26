@@ -454,7 +454,7 @@ class Handwriter:
                 pen_press = R.uniform(0.85, 1.15)                             # how hard this word is pressed
                 for seg in split_strokes(word):
                     # monoline fonts get a uniform ballpoint line instead of the blur-and-threshold weight
-                    p = self._glyph_params(0.5 if self.ar_thicken else word_w - 0.05, big=False)
+                    p = self._glyph_params(0.58 if self.ar_thicken else word_w - 0.05, big=False)   # thinner body, ballpoint line on top
                     p["font"] = (fi_word if R.random() < 0.85 else self._pick_font()) % n_ar
                     p["rot"] *= 1.1
                     p["shear"] = p["shear"] * 0.3 + R.gauss(0, 0.05 * MESS)
