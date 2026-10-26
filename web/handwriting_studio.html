@@ -1,0 +1,656 @@
+<title>Handwriting Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400&family=Patrick+Hand&family=Indie+Flower&family=Handlee&family=Homemade+Apple&family=Source+Sans+3:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  /* Layout: editor and controls on the left, a shelf of generated pages on the right; stacks on phones. */
+  :root {
+    --bg: #f3eee4;          /* desk paper */
+    --rule: rgba(43, 71, 184, .08);
+    --card: #fffdf8;
+    --line: #e3dccd;
+    --fg: #1e2a52;
+    --muted: #5d678c;
+    --accent: #2b47b8;      /* ballpoint blue */
+    --accent-deep: #1e349e;
+    --accent-soft: #eef1fb;
+    --margin: #e05a68;      /* red margin line */
+    --warn-bg: #fff4e5; --warn-fg: #8a5a00;
+    --shadow: 0 10px 30px rgba(60, 40, 10, .12);
+    --font-display: "Kalam", "Segoe Print", cursive;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1915; --rule: rgba(141, 164, 240, .07); --card: #26231e; --line: #3b362e; --fg: #ece6da; --muted: #a9a394;
+      --accent: #8da4f0; --accent-deep: #b9c7f7; --accent-soft: #2e3350; --margin: #e8707c;
+      --warn-bg: #3a2d14; --warn-fg: #f1c87a; --shadow: 0 10px 30px rgba(0, 0, 0, .4); color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1915; --rule: rgba(141, 164, 240, .07); --card: #26231e; --line: #3b362e; --fg: #ece6da; --muted: #a9a394;
+    --accent: #8da4f0; --accent-deep: #b9c7f7; --accent-soft: #2e3350; --margin: #e8707c;
+    --warn-bg: #3a2d14; --warn-fg: #f1c87a; --shadow: 0 10px 30px rgba(0, 0, 0, .4); color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg) repeating-linear-gradient(0deg, transparent 0 29px, var(--rule) 29px 30px); color: var(--fg);
+    font: 15px/1.5 var(--font-body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  header { padding: 26px 0 12px; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  header h1 { margin: 0; font: 400 40px/1.1 var(--font-display); color: var(--accent-deep); text-wrap: balance; }
+  header p { margin: 0; color: var(--muted); }
+  main { display: grid; gap: 22px; grid-template-columns: minmax(300px, 500px) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 20px; min-width: 0; }
+  .panel h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  textarea { width: 100%; min-height: 240px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 12px 34px;
+    font: 14px/1.55 var(--font-mono); color: var(--fg); background: var(--card) linear-gradient(90deg, transparent 0 22px, var(--margin) 22px 23px, transparent 23px); }
+  textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { font-size: 12.5px; color: var(--muted); margin: 8px 0 14px; }
+  .hint code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; color: var(--accent-deep); font-family: var(--font-mono); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; margin-bottom: 12px; }
+  @media (max-width: 420px) { .row { grid-template-columns: 1fr; } }
+  input[type=number], select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; color: var(--fg); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { float: right; font-weight: 600; color: var(--accent-deep); font-variant-numeric: tabular-nums; }
+  .seed { display: flex; gap: 6px; }
+  .seed input { flex: 1; min-width: 0; }
+  button { font: inherit; border: 0; border-radius: 9px; padding: 9px 14px; cursor: pointer; background: var(--accent-soft); color: var(--accent-deep); font-weight: 600; }
+  button:hover { filter: brightness(.96); }
+  button.primary { background: var(--accent); color: #fff; padding: 12px 20px; width: 100%; font-size: 16px; }
+  button.small { padding: 4px 10px; font-size: 12px; }
+  button:disabled { opacity: .55; cursor: wait; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--fg); margin-top: 22px; }
+  .check input { width: 17px; height: 17px; accent-color: var(--accent); }
+  .color { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .color input[type=color] { width: 44px; height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--card); }
+  .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--line); cursor: pointer; padding: 0; }
+  .progress { height: 10px; background: var(--accent-soft); border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  .progress .bar { height: 100%; width: 0; background: var(--accent); transition: width .35s; }
+  @media (prefers-reduced-motion: reduce) { .progress .bar { transition: none; } }
+  .status { font-size: 13px; color: var(--muted); margin-top: 6px; min-height: 18px; }
+  .status.error { color: var(--margin); font-weight: 600; }
+  .results-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 3px 10px rgba(60, 40, 10, .08); min-width: 0; }
+  .card img { width: 100%; max-width: 100%; height: auto; display: block; cursor: zoom-in; background: var(--accent-soft); }
+  .card .meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px; }
+  .empty { color: var(--muted); padding: 40px 10px; text-align: center; border: 2px dashed var(--line); border-radius: 12px; margin-top: 14px; }
+  .warn { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: 12px; }
+  .savehint { font-size: 12.5px; color: var(--muted); margin-top: 12px; }
+  .lightbox { position: fixed; inset: 0; background: rgba(20, 16, 10, .9); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out;
+    padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 6px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+  .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 11; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+  small.tip { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Handwriting Studio</h1>
+    <p>Type or paste your notes, pick a hand, and get photos of them written out in a spiral notebook.</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Your text</h2>
+      <textarea id="text" spellcheck="false" aria-label="Text to write"></textarea>
+      <div class="hint">
+        Start a line with a number like <code>12-</code> to begin a numbered answer. Lines without a number continue the answer above.
+        Definitions such as <code>RAM: ... ROM: ...</code> are each put on their own line.
+        <button id="reset" class="small" type="button">Reset to sample</button>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="pages">Pages</label>
+          <input id="pages" type="number" min="0" max="20" value="1">
+          <small class="tip">Spread evenly across them. 0 = as many as the text needs.</small>
+        </div>
+        <div>
+          <label for="gap">Empty lines between answers</label>
+          <select id="gap"><option value="0">none</option><option value="1">one line</option><option value="2">two lines</option></select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="font">Handwriting style</label>
+          <select id="font"></select>
+        </div>
+        <div>
+          <label for="seed">Hand (seed)</label>
+          <div class="seed">
+            <input id="seed" type="number" value="7">
+            <button id="dice" type="button" title="Pick a random hand">random</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="mess">Messiness <span class="val" id="messv"></span></label>
+          <input id="mess" type="range" min="0" max="1" step="0.05" value="0.7">
+        </div>
+        <div>
+          <label for="size">Letter size <span class="val" id="sizev"></span></label>
+          <input id="size" type="range" min="0.40" max="0.72" step="0.01" value="0.54">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="narrow">Letter width <span class="val" id="narrowv"></span></label>
+          <input id="narrow" type="range" min="0.70" max="1.10" step="0.01" value="0.88">
+        </div>
+        <div>
+          <label for="ink">Ink colour</label>
+          <div class="color">
+            <input id="ink" type="color" value="#1e349e">
+            <button class="swatch" type="button" data-c="#1e349e" style="background:#1e349e" title="blue ballpoint" aria-label="blue ballpoint"></button>
+            <button class="swatch" type="button" data-c="#1c1c22" style="background:#1c1c22" title="black" aria-label="black"></button>
+            <button class="swatch" type="button" data-c="#162a6e" style="background:#162a6e" title="dark blue" aria-label="dark blue"></button>
+            <button class="swatch" type="button" data-c="#b4232d" style="background:#b4232d" title="red" aria-label="red"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="format">File type</label>
+          <select id="format"><option value="jpg">JPG (looks like a phone photo)</option><option value="png">PNG (larger, lossless)</option></select>
+        </div>
+        <div>
+          <label class="check"><input id="fit" type="checkbox" checked> Fill the pages</label>
+          <small class="tip">Letters grow or shrink so the page count comes out full.</small>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label class="check" style="margin-top:0"><input id="crop" type="checkbox" checked> Close-up photo for short notes</label>
+        </div>
+      </div>
+
+      <button id="go" class="primary" type="button">Generate pages</button>
+      <div class="progress"><div class="bar" id="bar"></div></div>
+      <div class="status" id="status" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <div class="results-head">
+        <h2 style="margin:0">Pages</h2>
+        <button id="zip" type="button" hidden>Save all as .zip</button>
+      </div>
+      <div id="warn" class="warn" hidden></div>
+      <div id="empty" class="empty">Loading the pens...</div>
+      <div class="pages" id="pagesBox"></div>
+      <div id="savehint" class="savehint" hidden>Saving is not available in this view. Open a page and use your browser's "Save image" on it instead.</div>
+    </section>
+  </main>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightImg" alt="Generated page, full size"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+
+// ------------------------------------------------------------ geometry (page pixels)
+const PW = 1700, PH = 2600, LINE_GAP = 60, LINE0 = 34, MARGIN_X = 150, RIGHT_LIMIT = PW - 85, FIRST_ROW = 2;
+const RULES = []; for (let y = LINE0; y < PH; y += LINE_GAP) RULES.push(y);
+const CAPACITY = RULES.length - 2 - FIRST_ROW;
+const LABEL_X = MARGIN_X + 14;
+const SW = 2100, SH = 2800, SX = 230, SY = 100, PHOTO_W = 1800, PHOTO_H = 2400, CROP_X = 170, CROP_Y = 150;
+const S = 2;   // glyph supersampling
+const SIZE_MIN = 0.40, SIZE_MAX = 0.74;
+
+const FONTS = {
+  kalam:    { name: "Kalam", weights: [400, 300], label: "Kalam - neat print, mixed pen weight" },
+  patrick:  { name: "Patrick Hand", weights: [400], label: "Patrick Hand - rounder print" },
+  indie:    { name: "Indie Flower", weights: [400], label: "Indie Flower - loose, bubbly print" },
+  handlee:  { name: "Handlee", weights: [400], label: "Handlee - light, quick print" },
+  homemade: { name: "Homemade Apple", weights: [400], label: "Homemade Apple - joined-up cursive" },
+};
+const SAMPLE = `1- A computer is an electronic device that accepts data, processes it, stores it, and produces information.
+2- Hardware: The physical parts of a computer. Examples: Keyboard, monitor, and CPU. Software: Programs that instruct a computer. Examples: Windows, Microsoft Word, and Google Chrome
+3- RAM: Temporary, volatile memory that stores data currently being used. ROM: Non-volatile memory that keeps its contents without power and stores essential instructions
+4- The information processing cycle consists of four stages: Input, Processing, Output, and Storage`;
+
+// ------------------------------------------------------------ random
+function makeRng(seed) {
+  let a = (Math.imul(seed | 0, 0x9E3779B1) ^ 0x85EBCA6B) >>> 0;
+  const next = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  return {
+    next, uniform: (lo, hi) => lo + (hi - lo) * next(), int: (lo, hi) => lo + Math.floor(next() * (hi - lo + 1)),
+    gauss: (m, s) => { const u = 1 - next(), v = next(); return m + s * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); },
+  };
+}
+function noise1d(n, scale, R, octaves = 2) {   // smooth values in [0,1]
+  const out = new Float32Array(n); let amp = 1;
+  for (let o = 0; o < octaves; o++) {
+    const s = Math.max(2, scale / (2 ** o)), k = Math.ceil(n / s) + 2, knots = new Float32Array(k);
+    for (let i = 0; i < k; i++) knots[i] = R.next();
+    for (let x = 0; x < n; x++) { const p = x / s, i = Math.floor(p), t = (1 - Math.cos((p - i) * Math.PI)) / 2; out[x] += amp * (knots[i] * (1 - t) + knots[i + 1] * t); }
+    amp *= 0.5;
+  }
+  let mn = Infinity, mx = -Infinity; for (const v of out) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  const d = Math.max(mx - mn, 1e-6); for (let i = 0; i < n; i++) out[i] = (out[i] - mn) / d;
+  return out;
+}
+const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+function noiseAlpha(w, h, cell, R, rgb = [0, 0, 0], octaves = 2) {   // smooth alpha noise, colour rgb
+  const big = mk(w, h), bc = big.getContext("2d"); bc.imageSmoothingEnabled = true; bc.imageSmoothingQuality = "high";
+  let alpha = 1;
+  for (let o = 0; o < octaves; o++) {
+    const c = Math.max(1, cell / (2 ** o)), sw = Math.ceil(w / c) + 1, sh = Math.ceil(h / c) + 1;
+    const small = mk(sw, sh), sc = small.getContext("2d"), img = sc.createImageData(sw, sh), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = R.next() * 255; }
+    sc.putImageData(img, 0, 0);
+    bc.globalAlpha = alpha; bc.drawImage(small, 0, 0, sw, sh, 0, 0, w, h); alpha *= 0.5;
+  }
+  return big;
+}
+function grainPattern(ctx, R, rgb = [0, 0, 0]) {
+  const t = mk(256, 256), tc = t.getContext("2d"), img = tc.createImageData(256, 256), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = R.next() * 255; }
+  tc.putImageData(img, 0, 0);
+  return ctx.createPattern(t, "repeat");
+}
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+
+// ------------------------------------------------------------ text: parse, tidy, wrap, paginate
+const LABEL_RE = /^\d+[-)]$/;
+const HEAD_RE = /(?<![\w(])([A-Z][A-Za-z-]*(?: [a-z][A-Za-z-]*)?):(?=\s|$)/g;
+const NOT_HEADS = new Set(["Example", "Examples", "Note", "Answer"]);
+function splitDefinitions(line) {
+  const heads = []; for (const m of line.matchAll(HEAD_RE)) if (!NOT_HEADS.has(m[1])) heads.push(m.index);
+  const cuts = heads.slice(1).filter(i => i > 0), out = []; let prev = 0;
+  for (const c of cuts) { out.push(line.slice(prev, c).trim()); prev = c; }
+  out.push(line.slice(prev).trim());
+  return out.filter(Boolean);
+}
+function parseItems(rawLines, tidy) {
+  const items = []; let cur = null;
+  for (const raw of rawLines) {
+    const s = raw.replace(/\s+$/, "");
+    if (!s.trim()) { if (!tidy) { items.push({ label: null, lines: [], blank: true }); cur = null; } continue; }
+    const words = s.trim().split(/\s+/), cont = /^\s/.test(s);
+    if (!cont && LABEL_RE.test(words[0])) { cur = { label: words[0], lines: [words.slice(1).join(" ")] }; items.push(cur); }
+    else if (cont || (tidy && cur)) { if (!cur) { cur = { label: null, lines: [] }; items.push(cur); } cur.lines.push(words.join(" ")); }
+    else { cur = { label: null, lines: [words.join(" ")] }; items.push(cur); }
+  }
+  if (tidy) for (const it of items) it.lines = it.lines.flatMap(splitDefinitions);
+  return items;
+}
+
+// ------------------------------------------------------------ the writer
+class Handwriter {
+  constructor(o) {
+    this.o = o; this.R = makeRng(o.seed); this.mess = Math.max(0, Math.min(1, o.mess)); this.narrow = o.narrow;
+    this.font = FONTS[o.font] || FONTS.kalam; this.ink = hex2rgb(o.ink);
+    const m = mk(10, 10).getContext("2d"); m.font = `400 100px "${this.font.name}"`;
+    this.cap100 = m.measureText("H").actualBoundingBoxAscent || 70;
+    this.mctx = m; this.sizeUser = o.size;
+    this.gc = mk(10, 10); this.gctx = this.gc.getContext("2d"); this.tc = mk(10, 10); this.tctx = this.tc.getContext("2d");
+    this.setSize(this.sizeUser);
+    this.baseSlant = this.R.uniform(0.04, 0.14);
+    this.maxPen = 0; this.warnings = []; this.items = [];
+  }
+  setSize(size) {
+    this.size = size; this.fs = (size * LINE_GAP) / this.cap100 * 100;
+    this.mctx.font = `400 ${this.fs}px "${this.font.name}"`;
+    this.gc.width = Math.ceil(this.fs * 2.8 * S); this.gc.height = Math.ceil(this.fs * 2.3 * S);
+    this.tc.width = this.gc.width + 20; this.tc.height = this.gc.height + 20;
+  }
+  measure(w) { return this.mctx.measureText(w).width * this.narrow * 1.04; }
+  advance(prev, ch) { return (prev == null ? this.mctx.measureText(ch).width : this.mctx.measureText(prev + ch).width - this.mctx.measureText(prev).width) * this.narrow; }
+  pickWeight() { const w = this.font.weights; return w.length === 2 ? (this.R.next() < 0.62 ? w[0] : w[1]) : w[0]; }
+
+  layout() {
+    const raw = String(this.o.text).replace(/\r\n/g, "\n").replace(/\n+$/, "").split("\n");
+    this.items = parseItems(raw, this.o.tidy); this.warnings = [];
+    if (!this.items.length) { this.pages = [[]]; return this.pages; }
+    let pages;
+    if (this.o.pages === 0) { this.setSize(this.sizeUser); pages = this.greedy(this.wrapAll()); }
+    else {
+      if (this.o.fit) pages = this.fitLayout();
+      else { this.setSize(this.sizeUser); pages = this.paginate(this.wrapAll()); }
+      if (!pages || pages.some(p => p.length > CAPACITY)) {
+        pages = this.greedy(this.wrapAll());
+        this.warnings.push(`The text needs ${pages.length} pages even at the smallest letters, so ${pages.length} pages were written instead of ${this.o.pages}.`);
+      }
+    }
+    this.pages = pages; return pages;
+  }
+  fitLayout() {   // letter size, and when needed the spacing between answers, so the page count comes out full
+    const n = this.o.pages, cap = n * CAPACITY, userGap = this.o.gap;
+    let size = null;
+    for (let g = userGap; g >= 0; g--) { this.o.gap = g; const s = this.fitSize(); if (this.fits(s)) { size = s; break; } }
+    if (size == null) { this.o.gap = 0; this.setSize(SIZE_MIN); return null; }
+    if (this.o.gap !== userGap) this.warnings.push("The empty lines between answers were reduced so the text fits the pages.");
+    let fill = this.rowsAt(size) / cap;
+    while (fill < 0.85 && this.o.gap < 2 && size >= SIZE_MAX - 0.01) {
+      this.o.gap += 1;
+      const s2 = this.fitSize(), f2 = this.fits(s2) ? this.rowsAt(s2) / cap : 0;
+      if (f2 <= fill) { this.o.gap -= 1; break; }
+      size = s2; fill = f2;
+    }
+    this.setSize(size);
+    return this.paginate(this.wrapAll());
+  }
+  wrapAll() { this.Rl = makeRng(this.o.seed + 1); return this.items.map(it => this.wrapItem(it)); }   // same wrapping every time a size is tried
+  fits(size) { this.setSize(size); return this.paginate(this.wrapAll()).every(p => p.length <= CAPACITY); }
+  rowsAt(size) { this.setSize(size); return this.wrapAll().reduce((a, ls) => a + ls.length + ((ls.length && ls[0] !== null) ? this.o.gap : 0), 0); }
+  fitSize() {   // largest letter size that fits the page count: shrink when too long, grow when pages would stay half empty
+    const user = this.sizeUser, n = this.o.pages;
+    if (this.fits(user)) {
+      let lo = user, hi = Math.max(user, SIZE_MAX), best = user;
+      for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (this.fits(mid)) { best = mid; lo = mid; } else hi = mid; }
+      return (n >= 2 || this.rowsAt(best) >= 0.6 * n * CAPACITY) ? best : user;   // a single short note keeps its size
+    }
+    let lo = SIZE_MIN, hi = user, best = null;
+    for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (this.fits(mid)) { best = mid; lo = mid; } else hi = mid; }
+    return best == null ? SIZE_MIN : best;
+  }
+  greedy(itemLines) {   // fill each page to the last line before starting the next
+    const pages = []; let rows = [];
+    const flush = () => { while (rows.length && rows[rows.length - 1] === null) rows.pop(); pages.push(rows); rows = []; };
+    for (const ls of itemLines) {
+      if (!ls.length) continue;
+      if (rows.length && ls[0] !== null) for (let i = 0; i < this.o.gap; i++) rows.push(null);
+      for (const ln of ls) { if (rows.length >= CAPACITY) { flush(); if (ln === null) continue; } rows.push(ln); }
+    }
+    while (rows.length && rows[rows.length - 1] === null) rows.pop();
+    if (rows.length || !pages.length) pages.push(rows);
+    return pages;
+  }
+  wrapItem(item) {
+    if (item.blank) return [null];
+    const label = item.label, textX = label ? LABEL_X + this.measure(label) + 24 : LABEL_X, out = [], space = this.measure(" ");
+    let first = true;
+    const push = cur => { out.push({ words: cur, startX: (first && label) ? LABEL_X : textX, textX, label: first ? label : null }); first = false; };
+    for (const ln of item.lines) {
+      let cur = [], curW = 0;
+      for (const w of ln.split(/\s+/)) {
+        const ww = this.measure(w);
+        if (cur.length && curW + space + ww > (RIGHT_LIMIT - textX) + this.Rl.uniform(-30, 25)) { push(cur); cur = [w]; curW = ww; }
+        else { curW += (cur.length ? space : 0) + ww; cur.push(w); }
+      }
+      if (cur.length) push(cur);
+    }
+    return out;
+  }
+  paginate(itemLines) {
+    const gap = this.o.gap, n = Math.max(1, this.o.pages);
+    const weights = itemLines.map(ls => ls.length + ((ls.length && ls[0] !== null) ? gap : 0));
+    const total = weights.reduce((a, b) => a + b, 0), prefix = [0]; for (const w of weights) prefix.push(prefix[prefix.length - 1] + w);
+    const bounds = []; let last = 0;
+    for (let k = 1; k < n; k++) {
+      const lo = last + 1, hi = itemLines.length - (n - k); if (lo > hi) break;
+      const ideal = total * k / n; let best = lo;
+      for (let j = lo; j <= hi; j++) if (Math.abs(prefix[j] - ideal) < Math.abs(prefix[best] - ideal)) best = j;
+      bounds.push(best); last = best;
+    }
+    const edges = [0, ...bounds, itemLines.length], pages = [];
+    for (let g = 0; g < edges.length - 1; g++) {
+      const rows = [];
+      for (const ls of itemLines.slice(edges[g], edges[g + 1])) { if (rows.length && ls.length && ls[0] !== null) for (let i = 0; i < gap; i++) rows.push(null); rows.push(...ls); }
+      while (rows.length && rows[rows.length - 1] === null) rows.pop();
+      pages.push(rows);
+    }
+    return pages;
+  }
+
+  drawGlyph(ink, ch, p, x, baselineY) {
+    const R = this.R, fs = this.fs, gc = this.gc, g = this.gctx, tc = this.tc, t = this.tctx;
+    const ox = fs * 0.8 * S, oy = fs * 1.5 * S;
+    g.clearRect(0, 0, gc.width, gc.height);
+    g.save(); g.translate(ox, oy); g.rotate(p.rot); g.transform(1, 0, -p.shear, 1, 0, 0); g.scale(p.sx * this.narrow, p.sy);
+    g.font = `${p.weight} ${fs * S}px "${this.font.name}"`; g.textBaseline = "alphabetic"; g.fillStyle = "#000"; g.fillText(ch, 0, 0);
+    if (p.bold > 0.05) { g.lineWidth = p.bold * S; g.strokeStyle = "#000"; g.lineJoin = "round"; g.strokeText(ch, 0, 0); }
+    g.restore();
+    // the hand wobbles: slide thin horizontal strips sideways, then thin vertical strips up and down
+    const adv = this.mctx.measureText(ch).width * S * p.sx * this.narrow;
+    const x0 = Math.max(0, Math.floor(ox - 0.45 * fs * S)), x1 = Math.min(gc.width, Math.ceil(ox + adv + 0.5 * fs * S));
+    const y0 = Math.max(0, Math.floor(oy - 1.25 * fs * S)), y1 = Math.min(gc.height, Math.ceil(oy + 0.6 * fs * S));
+    const a = p.warp * S, strip = 2 * S;
+    const ph1 = R.uniform(0, 6.28), ph2 = R.uniform(0, 6.28), f1 = R.uniform(0.012, 0.03), f2 = R.uniform(0.03, 0.07);
+    t.clearRect(0, 0, tc.width, tc.height);
+    for (let y = y0; y < y1; y += strip) { const dx = a * (0.65 * Math.sin(y * f1 + ph1) + 0.35 * Math.sin(y * f2 + ph2)); t.drawImage(gc, x0, y, x1 - x0, strip, 10 + x0 + dx, 10 + y, x1 - x0, strip); }
+    const ph3 = R.uniform(0, 6.28), ph4 = R.uniform(0, 6.28), f3 = R.uniform(0.012, 0.03), f4 = R.uniform(0.03, 0.07);
+    const dstX = x - (ox + 10) / S, dstY = baselineY - (oy + 10) / S, ty0 = 10 + y0 - 4, th = (y1 - y0) + 8;
+    ink.globalAlpha = p.intensity;
+    for (let cx = 10 + x0 - 6; cx < 10 + x1 + 6; cx += strip) {
+      const dy = a * 0.8 * (0.65 * Math.sin(cx * f3 + ph3) + 0.35 * Math.sin(cx * f4 + ph4));
+      ink.drawImage(tc, cx, ty0, strip, th, dstX + cx / S, dstY + (ty0 + dy) / S, strip / S, th / S);
+    }
+    ink.globalAlpha = 1;
+  }
+  writeLine(ink, words, startX, textX, row, label) {
+    const R = this.R, M = this.mess, baseline = RULES[row] - R.uniform(1, 4), slope = R.gauss(0, 0.0045 * (0.3 + M)), drift = noise1d(PW, 260, R);
+    const spaceW = this.mctx.measureText(" ").width * this.narrow;
+    let pen = startX;
+    const list = label ? [label, ...words] : words;
+    list.forEach((word, wi) => {
+      const isLabel = label && wi === 0, wordDy = R.gauss(0, 1.8 * (0.3 + M)), wordInt = R.uniform(0.8, 1.0), wordBold = R.uniform(-0.3, 0.7), wWeight = this.pickWeight();
+      let prev = null;
+      for (const ch of word) {
+        const big = R.next() < 0.05 * M;
+        const p = { weight: R.next() < 0.92 ? wWeight : this.pickWeight(), bold: Math.max(0, wordBold + R.gauss(0, 0.1)),
+          shear: this.baseSlant + R.gauss(0, 0.045 * M), rot: R.gauss(0, 2.2 * (0.35 + M)) * Math.PI / 180,
+          sx: Math.max(0.8, R.gauss(1, 0.045 * (0.5 + M))) * (big ? 1.12 : 1), sy: Math.max(0.8, R.gauss(1, 0.05 * (0.5 + M))) * (big ? 1.12 : 1),
+          warp: 0.7 + 1.7 * M, intensity: wordInt * R.uniform(0.82, 1) };
+        const dy = wordDy + R.gauss(0, 1.5 * (0.3 + M)) + (pen - startX) * slope + (drift[Math.min(Math.max(pen | 0, 0), PW - 1)] - 0.5) * 3;
+        this.drawGlyph(ink, ch, p, pen, baseline + dy);
+        pen += this.advance(prev, ch) * R.uniform(0.95, 1.07) + R.gauss(0, 1.2 * M);
+        prev = ch;
+      }
+      this.maxPen = Math.max(this.maxPen, pen);
+      pen = isLabel ? textX : pen + spaceW * R.uniform(0.95, 1.35);
+    });
+  }
+
+  async renderPage(rows, idx, report) {
+    const R = this.R, M = this.mess, note = report || (() => {});
+    // ---- paper
+    const paper = mk(PW, PH), pc = paper.getContext("2d");
+    pc.fillStyle = "#fbfbf9"; pc.fillRect(0, 0, PW, PH);
+    let lg = pc.createLinearGradient(0, 0, PW, 0); lg.addColorStop(0, "rgba(0,0,0,.08)"); lg.addColorStop(1, "rgba(0,0,0,0)"); pc.fillStyle = lg; pc.fillRect(0, 0, PW, PH);
+    lg = pc.createLinearGradient(0, 0, 0, PH); lg.addColorStop(0, "rgba(0,0,0,0)"); lg.addColorStop(1, "rgba(0,0,0,.03)"); pc.fillStyle = lg; pc.fillRect(0, 0, PW, PH);
+    pc.globalAlpha = 0.09; pc.drawImage(noiseAlpha(PW, PH, 520, R, [0, 0, 0], 3), 0, 0);
+    pc.globalAlpha = 0.035; pc.fillStyle = grainPattern(pc, R); pc.fillRect(0, 0, PW, PH); pc.globalAlpha = 1;
+    pc.lineWidth = 2; pc.lineCap = "round";
+    for (const y of RULES) {
+      const wob = noise1d(PW, 300, R); pc.strokeStyle = `rgba(158,182,224,${R.uniform(0.59, 0.75).toFixed(2)})`; pc.beginPath();
+      for (let x = 0; x <= PW; x += 6) { const yy = y + (wob[Math.min(x, PW - 1)] - 0.5) * 2.2; x ? pc.lineTo(x, yy) : pc.moveTo(x, yy); }
+      pc.stroke();
+    }
+    pc.strokeStyle = "rgba(236,96,108,.69)"; pc.beginPath(); pc.moveTo(MARGIN_X, 0); pc.lineTo(MARGIN_X + R.uniform(-2, 2), PH); pc.stroke();
+    note(0.05, "paper ready");
+
+    // ---- writing
+    const inkC = mk(PW, PH), ink = inkC.getContext("2d"); ink.imageSmoothingEnabled = true; ink.imageSmoothingQuality = "high";
+    this.maxPen = 0;
+    let row = FIRST_ROW;
+    for (let i = 0; i < rows.length; i++) {
+      const ln = rows[i];
+      if (ln) this.writeLine(ink, ln.words, ln.startX, ln.textX, row, ln.label);
+      row++;
+      if (i % 3 === 2 || i === rows.length - 1) { note(0.05 + 0.7 * (i + 1) / rows.length, `writing line ${i + 1} of ${rows.length}`); await tick(); }
+    }
+    const lastRow = row;
+    // stray specks of ink
+    ink.fillStyle = "#000";
+    for (let i = 0, n = 6 + 14 * M; i < n; i++) { const x = R.uniform(MARGIN_X, PW - 60), y = R.uniform(RULES[1], PH - 60), r = R.uniform(0.5, 1.4); ink.globalAlpha = R.uniform(0.15, 0.45); ink.beginPath(); ink.arc(x, y, r, 0, 6.29); ink.fill(); }
+    ink.globalAlpha = 1;
+    // pen pressure: lighter patches and fine ballpoint streaks
+    ink.globalCompositeOperation = "destination-out";
+    ink.globalAlpha = 0.38; ink.drawImage(noiseAlpha(PW, PH, 26, R, [0, 0, 0], 3), 0, 0);
+    ink.globalAlpha = 0.14; ink.drawImage(noiseAlpha(PW, PH, 3, R, [0, 0, 0], 1), 0, 0);
+    // colour the ink, pooling darker in places
+    ink.globalCompositeOperation = "source-in"; ink.globalAlpha = 1; ink.fillStyle = `rgb(${this.ink.join(",")})`; ink.fillRect(0, 0, PW, PH);
+    ink.globalCompositeOperation = "source-atop"; ink.globalAlpha = 0.28; ink.drawImage(noiseAlpha(PW, PH, 60, R, [0, 0, 0], 2), 0, 0);
+    ink.globalCompositeOperation = "source-over"; ink.globalAlpha = 1;
+    pc.globalCompositeOperation = "multiply"; if ("filter" in pc) pc.filter = "blur(0.4px)"; pc.drawImage(inkC, 0, 0); if ("filter" in pc) pc.filter = "none"; pc.globalCompositeOperation = "source-over";
+    inkC.width = 0;
+    note(0.82, "ink dried"); await tick();
+
+    // ---- scene: desk, notebook, coil
+    const scene = mk(SW, SH), sc = scene.getContext("2d");
+    sc.fillStyle = "rgb(150,104,64)"; sc.fillRect(0, 0, SW, SH);
+    sc.globalCompositeOperation = "overlay"; sc.globalAlpha = 0.55;
+    const gw = Math.ceil(SW / 3), gh = Math.ceil(SH / 40), gsm = mk(gw, gh), gsc = gsm.getContext("2d"), gimg = gsc.createImageData(gw, gh);
+    for (let i = 0; i < gimg.data.length; i += 4) { const v = 90 + R.next() * 130; gimg.data[i] = gimg.data[i + 1] = gimg.data[i + 2] = v; gimg.data[i + 3] = 255; }
+    gsc.putImageData(gimg, 0, 0); sc.drawImage(gsm, 0, 0, SW, SH);
+    sc.globalAlpha = 0.25; sc.drawImage(noiseAlpha(SW, SH, 300, R, [255, 255, 255], 2), 0, 0);
+    sc.globalCompositeOperation = "source-over"; sc.globalAlpha = 1;
+    const hasFilter = "filter" in sc;
+    if (hasFilter) sc.filter = "blur(10px)"; sc.fillStyle = "rgba(22,18,16,.92)"; sc.fillRect(SX - 130, -30, 132, SH + 60);
+    if (hasFilter) sc.filter = "blur(6px)"; sc.fillStyle = "rgba(0,0,0,.47)"; sc.fillRect(SX + 6, SY + 8, PW, PH);
+    if (hasFilter) sc.filter = "none";
+    // the sheet, gently bent so lines and writing curve together
+    const bend = noise1d(PH, 520, R);
+    for (let y = 0; y < PH; y += 4) { const dx = (bend[y] - 0.5) * 7; sc.drawImage(paper, 0, y, PW, 4, SX + dx, SY + y, PW, 4); }
+    paper.width = 0;
+    // coil through punched holes
+    for (let hy = SY + 48; hy < SY + PH; hy += 80) {
+      sc.fillStyle = "rgba(70,62,58,.43)"; rrect(sc, SX + 14, hy - 14, 48, 28, 11); sc.fill();
+      sc.fillStyle = "rgb(26,24,24)"; rrect(sc, SX + 17, hy - 12, 42, 24, 10); sc.fill();
+      sc.lineCap = "round"; sc.lineJoin = "round";
+      sc.strokeStyle = "rgb(10,10,12)"; sc.lineWidth = 10; sc.beginPath(); sc.moveTo(SX + 50, hy - 2); sc.quadraticCurveTo(SX + 10, hy + 8, SX - 25, hy + 20); sc.quadraticCurveTo(SX - 55, hy + 30, SX - 90, hy + 34); sc.stroke();
+      sc.strokeStyle = "rgb(118,118,124)"; sc.lineWidth = 2; sc.beginPath(); sc.moveTo(SX + 20, hy + 3); sc.quadraticCurveTo(SX - 10, hy + 10, SX - 25, hy + 17); sc.quadraticCurveTo(SX - 55, hy + 27, SX - 90, hy + 31); sc.stroke();
+      sc.strokeStyle = "rgb(8,8,10)"; sc.lineWidth = 8; sc.beginPath(); sc.ellipse(SX - 66, hy + 30, 26, 28, 0, 60 * Math.PI / 180, 250 * Math.PI / 180); sc.stroke();
+    }
+    note(0.9, "notebook on the desk"); await tick();
+
+    // ---- camera
+    const angle = R.uniform(-1.6, -0.6) * Math.PI / 180, key = R.uniform(0.008, 0.02);
+    const photo = mk(PHOTO_W, PHOTO_H), px = photo.getContext("2d"); px.imageSmoothingQuality = "high";
+    px.save(); px.translate(-CROP_X, -CROP_Y); px.translate(SW / 2, SH / 2); px.rotate(angle); px.translate(-SW / 2, -SH / 2);
+    for (let y = 0; y < SH; y += 4) { const s = 1 + key * ((y + 2 - SH / 2) / (SH / 2)); px.drawImage(scene, 0, y, SW, 4, SW / 2 - (SW / 2) * s, y, SW * s, 4.5); }
+    px.restore(); scene.width = 0;
+    const cx = PHOTO_W / 2, cy = PHOTO_H / 2, rg = px.createRadialGradient(cx, cy, PHOTO_W * 0.35, cx, cy, PHOTO_H * 0.78);
+    rg.addColorStop(0, "rgba(0,0,0,0)"); rg.addColorStop(1, "rgba(0,0,0,.32)"); px.fillStyle = rg; px.fillRect(0, 0, PHOTO_W, PHOTO_H);
+    px.globalCompositeOperation = "multiply"; px.fillStyle = "rgb(255,252,246)"; px.fillRect(0, 0, PHOTO_W, PHOTO_H); px.globalCompositeOperation = "source-over";
+    const img = px.getImageData(0, 0, PHOTO_W, PHOTO_H), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * 7; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+    px.putImageData(img, 0, 0);
+    let outW = PHOTO_W, outH = PHOTO_H;
+    if (this.o.crop && this.pages.length === 1 && lastRow < 14) { outW = Math.min(PHOTO_W, Math.max(1000, this.maxPen + SX - CROP_X + 380)) | 0; outH = Math.min(PHOTO_H, Math.max(520, (lastRow + 3) * LINE_GAP)) | 0; }
+    const out = mk(outW, outH), oc = out.getContext("2d");
+    if ("filter" in oc) oc.filter = "blur(0.5px)"; oc.drawImage(photo, 0, 0); photo.width = 0;
+    note(1, "photo taken");
+    const blob = await new Promise(res => out.toBlob(res, this.o.format === "png" ? "image/png" : "image/jpeg", 0.86));
+    out.width = 0;
+    return blob;
+  }
+}
+function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+// ------------------------------------------------------------ UI
+let busy = false, results = [], downloads = null, zipBlob = null, toastTimer = null;
+const sliders = [["mess", "messv"], ["size", "sizev"], ["narrow", "narrowv"]];
+for (const [id, out] of sliders) { const el = $("#" + id), o = $("#" + out), upd = () => o.textContent = (+el.value).toFixed(2); el.addEventListener("input", upd); upd(); }
+const sel = $("#font");
+for (const [key, f] of Object.entries(FONTS)) { const op = document.createElement("option"); op.value = key; op.textContent = f.label; sel.appendChild(op); }
+let saved = null; try { saved = localStorage.getItem("hw-text"); } catch (e) {}
+$("#text").value = saved || SAMPLE;
+$("#text").addEventListener("input", () => { try { localStorage.setItem("hw-text", $("#text").value); } catch (e) {} });
+$("#reset").addEventListener("click", () => { $("#text").value = SAMPLE; try { localStorage.removeItem("hw-text"); } catch (e) {} });
+$("#dice").addEventListener("click", () => $("#seed").value = Math.floor(Math.random() * 100000));
+document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", () => $("#ink").value = s.dataset.c));
+
+function readOpts() {
+  return { text: $("#text").value, pages: Math.max(0, Math.min(20, +$("#pages").value || 0)), gap: +$("#gap").value, font: $("#font").value,
+    seed: +$("#seed").value || 0, mess: +$("#mess").value, size: +$("#size").value, narrow: +$("#narrow").value, ink: $("#ink").value,
+    format: $("#format").value, crop: $("#crop").checked, fit: $("#fit").checked, tidy: true };
+}
+function setStatus(msg, isError) { const s = $("#status"); s.textContent = msg; s.className = "status" + (isError ? " error" : ""); }
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600); }
+
+async function ensureFont(f) {
+  const loads = f.weights.map(w => document.fonts.load(`${w} 40px "${f.name}"`));
+  await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 6000))]);
+}
+
+async function generate() {
+  if (busy) return; busy = true;
+  const o = readOpts();
+  if (!o.text.trim()) { setStatus("Write some text first.", true); busy = false; return; }
+  $("#go").disabled = true; $("#bar").style.width = "0%"; $("#zip").hidden = true; $("#warn").hidden = true; $("#empty").hidden = true;
+  for (const r of results) URL.revokeObjectURL(r.url);
+  results = []; zipBlob = null; $("#pagesBox").innerHTML = "";
+  try {
+    setStatus("loading the handwriting...");
+    await ensureFont(FONTS[o.font] || FONTS.kalam);
+    const hw = new Handwriter(o), pages = hw.layout(), n = pages.length;
+    if (hw.warnings.length) { $("#warn").hidden = false; $("#warn").textContent = hw.warnings.join(" "); }
+    for (let i = 0; i < n; i++) {
+      const blob = await hw.renderPage(pages[i], i, (f, m) => { $("#bar").style.width = Math.round((i + f) / n * 100) + "%"; setStatus(`page ${i + 1} of ${n}: ${m}`); });
+      const name = `page_${String(i + 1).padStart(2, "0")}.${o.format}`, url = URL.createObjectURL(blob);
+      results.push({ name, blob, url, lines: pages[i].length });
+      addCard(results[results.length - 1], i + 1);
+      await tick();
+    }
+    setStatus(`done: ${n} page${n === 1 ? "" : "s"} written`);
+    if (n > 1 && (downloads || !window.claude)) $("#zip").hidden = false;
+  } catch (e) {
+    setStatus("Something went wrong: " + (e && e.message ? e.message : e), true);
+  }
+  $("#go").disabled = false; busy = false;
+}
+
+function addCard(r, n) {
+  const card = document.createElement("div"); card.className = "card";
+  const img = document.createElement("img"); img.src = r.url; img.alt = `Page ${n}`; img.addEventListener("click", () => { $("#lightImg").src = r.url; $("#lightbox").classList.add("open"); });
+  const meta = document.createElement("div"); meta.className = "meta";
+  const span = document.createElement("span"); span.textContent = `Page ${n} - ${r.lines} line${r.lines === 1 ? "" : "s"}`;
+  meta.appendChild(span);
+  if (downloads || !window.claude) { const b = document.createElement("button"); b.className = "small"; b.type = "button"; b.textContent = "Save"; b.addEventListener("click", () => saveFile(r.name, r.blob)); meta.appendChild(b); }
+  card.appendChild(img); card.appendChild(meta); $("#pagesBox").appendChild(card);
+}
+
+async function saveFile(name, blob) {
+  if (downloads) {
+    try { await downloads.save({ filename: name, data: blob }); toast("Saved " + name); }
+    catch (e) { if (!e || e.code !== "declined") toast("Could not save: " + (e && e.message ? e.message : "unavailable")); }
+    return;
+  }
+  if (!window.claude) {   // plain browser outside the viewer
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
+  toast("Saving is not available here. Open the page and use your browser's Save image.");
+}
+async function saveZip() {
+  if (!results.length || !window.JSZip) return;
+  $("#zip").disabled = true;
+  try {
+    if (!zipBlob) { const z = new JSZip(); for (const r of results) z.file(r.name, r.blob); zipBlob = await z.generateAsync({ type: "blob" }); }
+    await saveFile("handwritten_pages.zip", zipBlob);
+  } catch (e) { toast("Could not build the zip."); }
+  $("#zip").disabled = false;
+}
+
+$("#lightbox").addEventListener("click", () => $("#lightbox").classList.remove("open"));
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("#lightbox").classList.remove("open"); if ((e.ctrlKey || e.metaKey) && e.key === "Enter") generate(); });
+$("#go").addEventListener("click", generate);
+$("#zip").addEventListener("click", saveZip);
+
+(async () => {
+  try { if (window.claude && window.claude.use) downloads = await window.claude.use("downloads"); } catch (e) { downloads = null; }
+  if (window.claude && !downloads) $("#savehint").hidden = false;
+  if (!results.length && !busy) {   // show what the tool does right away
+    $("#empty").textContent = "Writing an example page...";
+    await generate();
+  }
+})();
+})();
+</script>

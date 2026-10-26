@@ -1,0 +1,21 @@
+1- A computer is an electronic device that accepts data, processes it, stores it, and produces information.
+2- 1. Education: Online learning and research
+    2. Communication: Emails and video calls
+    3. Business: Managing accounts and records
+    4. Healthcare: Maintaining patient records
+    5. Entertainment: Playing games and watching videos
+3- Data: Raw facts that have not been processed. Example: 70, 80, 90
+    Information: Processed data that has meaning. Example: The average mark is 80
+4- The information processing cycle consists of four stages: Input, Processing, Output, and Storage
+5- Hardware: The physical parts of a computer. Examples: Keyboard, monitor, and CPU.
+    Software: Programs that instruct a computer. Examples: Windows, Microsoft Word, and Google Chrome
+6- Input devices: Used to enter data into a computer. Examples: Keyboard, mouse, and scanner.
+    Output devices: Used to display or produce results. Examples: Monitor, printer, and speakers
+7- External hardware: Devices connected outside the computer. Examples: Keyboard, mouse, and printer.
+    Internal hardware: Components located inside the computer. Examples: Motherboard, RAM, and CPU
+8- RAM: Temporary, volatile memory that stores data currently being used.
+    ROM: Non-volatile memory that retains its contents without power and stores essential instructions
+9- The CPU (Central Processing Unit) is the brain of the computer. It executes instructions, processes data, and controls computer operations
+10- 1. ALU: Performs arithmetic and logical operations
+    2. Control Unit (CU): Controls and coordinates computer operations
+    3. Registers: Temporarily store data and instructions during processing

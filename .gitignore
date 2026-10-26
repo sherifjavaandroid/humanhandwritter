@@ -1,0 +1,17 @@
+# generated pages and test output
+output/
+result/
+result_8_pages/
+pages/
+*.jpg
+*.png
+!web/*.png
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# tool scratch
+.playwright-mcp/

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handwriting Studio</title>
+<style>
+  :root {
+    --paper: #f6f1e7;
+    --card: #fffdf8;
+    --ink: #1e2a52;
+    --ink-soft: #55608a;
+    --blue: #2b47b8;
+    --blue-dark: #1e349e;
+    --red: #e05a68;
+    --rule: #c9d6ef;
+    --line: #e6dfd2;
+    --shadow: 0 10px 30px rgba(60, 40, 10, .12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  body { background-image: repeating-linear-gradient(0deg, transparent 0 29px, rgba(43,71,184,.07) 29px 30px); }
+  header { padding: 28px 24px 10px; max-width: 1400px; margin: 0 auto; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  header h1 { margin: 0; font: 400 38px/1.1 "Ink Free", "Segoe Print", "Bradley Hand", cursive; color: var(--blue-dark); }
+  header p { margin: 0; color: var(--ink-soft); }
+  main { max-width: 1400px; margin: 0 auto; padding: 10px 24px 60px; display: grid; gap: 22px;
+    grid-template-columns: minmax(340px, 520px) 1fr; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 20px; }
+  .panel h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-soft); }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+  textarea { width: 100%; min-height: 330px; resize: vertical; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px 12px 34px; font: 14px/1.55 Consolas, "Cascadia Mono", monospace; color: var(--ink); background: #fff;
+    background-image: linear-gradient(90deg, transparent 0 22px, var(--red) 22px 23px, transparent 23px); }
+  textarea:focus, input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .hint { font-size: 12.5px; color: var(--ink-soft); margin: 8px 0 14px; }
+  .hint code { background: #eef1fb; padding: 1px 5px; border-radius: 4px; color: var(--blue-dark); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; margin-bottom: 12px; }
+  .row.one { grid-template-columns: 1fr; }
+  input[type=number], select, input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; font: inherit; color: var(--ink); }
+  input[type=range] { width: 100%; accent-color: var(--blue); }
+  .val { float: right; font-weight: 500; color: var(--blue-dark); }
+  .seed { display: flex; gap: 6px; }
+  .seed input { flex: 1; }
+  button { font: inherit; border: 0; border-radius: 9px; padding: 9px 14px; cursor: pointer; background: #eef1fb; color: var(--blue-dark); }
+  button:hover { background: #e2e7f8; }
+  button.primary { background: var(--blue); color: #fff; font-weight: 600; padding: 12px 20px; width: 100%; font-size: 16px; }
+  button.primary:hover { background: var(--blue-dark); }
+  button:disabled { opacity: .55; cursor: wait; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; color: var(--ink); margin-top: 22px; }
+  .check input { width: 17px; height: 17px; accent-color: var(--blue); }
+  .color { display: flex; gap: 8px; align-items: center; }
+  .color input[type=color] { width: 44px; height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: #fff; }
+  .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+  .progress { height: 10px; background: #eceef5; border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  .progress .bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--blue), #6d86e8); transition: width .4s; }
+  .status { font-size: 13px; color: var(--ink-soft); margin-top: 6px; min-height: 18px; }
+  .status.error { color: var(--red); font-weight: 600; }
+  .results-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; margin-top: 14px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 3px 10px rgba(60,40,10,.08); }
+  .card img { width: 100%; height: auto; display: block; cursor: zoom-in; background: #eee; }
+  .card .meta { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-size: 13px; }
+  .card a { color: var(--blue-dark); text-decoration: none; font-weight: 600; }
+  .empty { color: var(--ink-soft); padding: 40px 10px; text-align: center; border: 2px dashed var(--line); border-radius: 12px; margin-top: 14px; }
+  .warn { background: #fff4e5; color: #8a5a00; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: 12px; }
+  .lightbox { position: fixed; inset: 0; background: rgba(20, 16, 10, .88); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 96vw; max-height: 96vh; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  small.tip { display: block; color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Handwriting Studio</h1>
+  <p>Type or paste your notes, pick a hand, and get photos of them written out in a notebook.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Your text</h2>
+    <textarea id="text" spellcheck="false"></textarea>
+    <div class="hint">
+      Start a line with a number like <code>12-</code> to begin a numbered answer. Lines without a number continue the answer above.
+      Definitions such as <code>RAM: ... ROM: ...</code> are each put on their own line.
+      <button id="reset" style="padding:3px 9px;font-size:12px;margin-left:6px">Reset to sample</button>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="pages">Pages</label>
+        <input id="pages" type="number" min="0" max="20" value="1">
+        <small class="tip">Spread evenly across them. 0 = as many as the text needs.</small>
+      </div>
+      <div>
+        <label for="gap">Empty lines between answers</label>
+        <select id="gap"><option value="0">none</option><option value="1">one line</option><option value="2">two lines</option></select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="font">Handwriting style</label>
+        <select id="font"></select>
+      </div>
+      <div>
+        <label for="seed">Hand (seed)</label>
+        <div class="seed">
+          <input id="seed" type="number" value="7">
+          <button id="dice" title="Pick a random hand">&#127922; random</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="mess">Messiness <span class="val" id="messv"></span></label>
+        <input id="mess" type="range" min="0" max="1" step="0.05" value="0.7">
+      </div>
+      <div>
+        <label for="size">Letter size <span class="val" id="sizev"></span></label>
+        <input id="size" type="range" min="0.40" max="0.72" step="0.01" value="0.54">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="narrow">Letter width <span class="val" id="narrowv"></span></label>
+        <input id="narrow" type="range" min="0.70" max="1.10" step="0.01" value="0.88">
+      </div>
+      <div>
+        <label>Ink colour</label>
+        <div class="color">
+          <input id="ink" type="color" value="#1e349e">
+          <span class="swatch" data-c="#1e349e" style="background:#1e349e" title="blue ballpoint"></span>
+          <span class="swatch" data-c="#1c1c22" style="background:#1c1c22" title="black"></span>
+          <span class="swatch" data-c="#162a6e" style="background:#162a6e" title="dark blue"></span>
+          <span class="swatch" data-c="#b4232d" style="background:#b4232d" title="red"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="format">File type</label>
+        <select id="format"><option value="jpg">JPG (looks like a phone photo)</option><option value="png">PNG (larger, lossless)</option></select>
+      </div>
+      <div>
+        <label class="check"><input id="fit" type="checkbox" checked> Fill the pages</label>
+        <small class="tip">Letters grow or shrink so the page count comes out full.</small>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="check" style="margin-top:0"><input id="crop" type="checkbox" checked> Close-up photo for short notes</label>
+      </div>
+    </div>
+
+    <button id="go" class="primary">Generate pages</button>
+    <div class="progress"><div class="bar" id="bar"></div></div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="panel">
+    <div class="results-head">
+      <h2 style="margin:0">Pages</h2>
+      <a id="zip" href="#" style="display:none"><button>&#11015; Download all (.zip)</button></a>
+    </div>
+    <div id="warn" class="warn" style="display:none"></div>
+    <div id="empty" class="empty">Nothing yet. Generate your first page on the left.</div>
+    <div class="pages" id="pagesBox"></div>
+  </section>
+</main>
+
+<div class="lightbox" id="lightbox"><img id="lightImg" alt=""></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let cfg = null, pollTimer = null, shownFiles = 0;
+
+const sliders = [["mess", "messv", v => (+v).toFixed(2)], ["size", "sizev", v => (+v).toFixed(2)], ["narrow", "narrowv", v => (+v).toFixed(2)]];
+for (const [id, out, fmt] of sliders) {
+  const el = $("#" + id), o = $("#" + out);
+  const upd = () => o.textContent = fmt(el.value);
+  el.addEventListener("input", upd); upd();
+}
+
+async function init() {
+  cfg = await (await fetch("/api/config")).json();
+  const sel = $("#font");
+  for (const [key, desc] of Object.entries(cfg.fonts)) {
+    const op = document.createElement("option"); op.value = key; op.textContent = desc; sel.appendChild(op);
+  }
+  sel.value = cfg.defaults.font in cfg.fonts ? cfg.defaults.font : Object.keys(cfg.fonts)[0];
+  $("#pages").max = cfg.max_pages;
+  let saved = null;
+  try { saved = localStorage.getItem("hw-text"); } catch (e) {}
+  $("#text").value = saved || cfg.sample_text;
+}
+$("#text").addEventListener("input", () => { try { localStorage.setItem("hw-text", $("#text").value); } catch (e) {} });
+$("#reset").addEventListener("click", () => { $("#text").value = cfg.sample_text; try { localStorage.removeItem("hw-text"); } catch (e) {} });
+$("#dice").addEventListener("click", () => $("#seed").value = Math.floor(Math.random() * 100000));
+document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", () => $("#ink").value = s.dataset.c));
+
+function readOpts() {
+  return {
+    text: $("#text").value, pages: Math.max(0, +$("#pages").value || 0), gap: +$("#gap").value, font: $("#font").value,
+    seed: +$("#seed").value, mess: +$("#mess").value, size: +$("#size").value, narrow: +$("#narrow").value,
+    ink: $("#ink").value, format: $("#format").value, crop: $("#crop").checked, fit: $("#fit").checked, tidy: true,
+  };
+}
+
+function setStatus(msg, isError) { const s = $("#status"); s.textContent = msg; s.className = "status" + (isError ? " error" : ""); }
+
+async function generate() {
+  if (pollTimer) clearTimeout(pollTimer);
+  $("#go").disabled = true; $("#bar").style.width = "0%"; $("#zip").style.display = "none";
+  $("#warn").style.display = "none"; $("#pagesBox").innerHTML = ""; $("#empty").style.display = "none"; shownFiles = 0;
+  setStatus("sending your text...");
+  let res;
+  try {
+    res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(readOpts()) });
+  } catch (e) { setStatus("could not reach the server. Is app.py still running?", true); $("#go").disabled = false; return; }
+  const j = await res.json();
+  if (!res.ok) { setStatus(j.error || "something went wrong", true); $("#go").disabled = false; return; }
+  poll(j.id);
+}
+
+async function poll(id) {
+  let job;
+  try { job = await (await fetch("/api/jobs/" + id)).json(); }
+  catch (e) { setStatus("lost contact with the server", true); $("#go").disabled = false; return; }
+  $("#bar").style.width = Math.round((job.progress || 0) * 100) + "%";
+  if (job.status === "queued") setStatus("waiting for the pen (another job is running)...");
+  else if (job.status === "running") setStatus(job.message || "writing...");
+  for (; shownFiles < job.files.length; shownFiles++) addCard(job.files[shownFiles], shownFiles + 1, job.lines[shownFiles]);
+  if (job.warnings && job.warnings.length) { $("#warn").style.display = "block"; $("#warn").textContent = job.warnings.join(" "); }
+  if (job.status === "done") {
+    setStatus(`done: ${job.files.length} page${job.files.length === 1 ? "" : "s"} written`);
+    $("#zip").href = "/api/zip/" + id; $("#zip").style.display = job.files.length > 1 ? "inline" : "none";
+    $("#go").disabled = false; return;
+  }
+  if (job.status === "error") { setStatus("error: " + job.error, true); $("#go").disabled = false; return; }
+  pollTimer = setTimeout(() => poll(id), 900);
+}
+
+function addCard(file, n, lines) {
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML = `<img src="${file.url}" alt="page ${n}">
+    <div class="meta"><span>Page ${n}${lines != null ? ` &middot; ${lines} lines` : ""}</span><a href="${file.url}" download="${file.name}">&#11015; save</a></div>`;
+  card.querySelector("img").addEventListener("click", () => { $("#lightImg").src = file.url; $("#lightbox").classList.add("open"); });
+  $("#pagesBox").appendChild(card);
+}
+$("#lightbox").addEventListener("click", () => $("#lightbox").classList.remove("open"));
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("#lightbox").classList.remove("open"); });
+$("#go").addEventListener("click", generate);
+document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") generate(); });
+init();
+</script>
+</body>
+</html>

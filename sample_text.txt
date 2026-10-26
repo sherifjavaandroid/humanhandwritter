@@ -1,0 +1,124 @@
+1- A computer is an electronic device that accepts data, processes it, stores it, and produces information.
+
+2- 1. Education: Online learning and research
+2. Communication: Emails and video calls
+ 3. Business: Managing accounts and records
+ 4. Healthcare: Maintaining patient records
+ 5. Entertainment: Playing games and watching videos
+
+3- Data: Raw facts that have not been processed. Example: 70, 80, 90 Information: Processed data that has meaning. Example: The average mark is 80
+
+4- The information processing cycle consists of four stages: Input, Processing, Output, and Storage
+
+5- Hardware: The physical parts of a computer. Examples: Keyboard, monitor, and CPU. Software: Programs that instruct a computer. Examples: Windows, Microsoft Word, and Google Chrome
+
+6- Input devices: Used to enter data into a computer. Examples: Keyboard, mouse, and scanner. Output devices: Used to display or produce results. Examples: Monitor, printer, and speakers
+
+7- External hardware: Devices connected outside the computer. Examples: Keyboard, mouse, and printer. Internal hardware: Components located inside the computer. Examples: Motherboard, RAM, and CPU
+
+8- RAM: Temporary, volatile memory that stores data currently being used. ROM: Non-volatile memory that retains its contents without power and stores essential instructions
+
+9- The CPU (Central Processing Unit) is the brain of the computer. It executes instructions, processes data, and controls computer operations
+
+10- 1. ALU: Performs arithmetic and logical operations
+ 2. Control Unit (CU): Controls and coordinates computer operations
+ 3. Registers: Temporarily store data and instructions during processing
+
+11- The CPU retrieves data and instructions from RAM, processes them, and stores the results in RAM or storage
+
+12- System software: Manages computer hardware and basic operations Example: Windows 
+Application software: Helps users perform specific tasks. Example: Microsoft Word
+
+13- No, a general-purpose computer needs system software to manage its hardware and run applications
+
+14- Examples include operating systems, device drivers, utility programs, and BIOS
+
+15- Examples include Microsoft Word, Microsoft Excel, Google Chrome, and Adobe Photoshop
+
+16- The operating system manages memory, files, processes, devices, and user interaction
+
+17- The system unit is the main computer case that contains internal components such as the motherboard, CPU, RAM, storage devices, and power supply
+
+18- The motherboard connects the computer's components and allows them to communicate with each other
+
+19- The main components include the CPU socket, RAM slots, chipset, BIOS chip, expansion slots, and connectors
+
+20- Motherboard: The main circuit board connecting computer components. System unit: The case containing the motherboard and other internal hardware components
+
+21- The chipset manages communication between the CPU, memory, storage, and other devices, affecting the motherboard's features and performance
+
+22- BIOS initializes and checks hardware during startup and helps load the operating system
+
+23- Buses transfer data, addresses, and control signals between computer components
+
+24- An analog computer processes continuous data and represents information using physical quantities such as voltage, temperature, or speed
+
+25- They are used in scientific simulations, industrial control systems, and measurement devices
+
+26- Digital computers: Process discrete data, usually in binary form (0 and 1). Analog computers: Process continuous data represented by physical quantities
+
+27- The main components are the input unit, CPU, memory, storage devices, and output unit
+
+28- Examples include desktop computers, laptops, smartphones, tablets, and servers
+
+29- A hybrid computer combines analog and digital technologies to process both continuous and discrete data.
+30- They use analog components to measure continuous data and digital components to process, store, and display the results
+
+31- A medical patient-monitoring system is an example of a hybrid computer because it measures physical signals and processes the data digitally
+
+32- Hybrid computers combine the speed of analog processing with the accuracy, storage, and flexibility of digital processing
+
+33- Embedded computers are specialized computers built into devices to perform specific tasks. They are used in cars, washing machines, and medical equipment
+
+34- Embedded computers: Designed for specific tasks. General-purpose computers: Designed to perform many different tasks.
+35- Mobile devices are portable, compact, and often use touchscreens and batteries
+Traditional computers are generally larger and offer more upgrade and expansion options
+
+36- Examples include smartphones, tablets, smartwatches, and e-readers
+
+37- The main categories include supercomputers, mainframes, minicomputers, microcomputers, workstations, and servers
+
+38- Supercomputers provide extremely high processing speed and are used for complex calculations, scientific research, weather forecasting, and simulations
+
+39- Minicomputers: Mid-sized systems that support multiple users. Mainframes: Large systems that process huge amounts of data for many users. Microcomputers: Smaller computers designed mainly for individual users.
+40- Personal computers are designed for individual use They are relatively affordable and can perform tasks such as word processing, browsing, studying, and gaming
+
+41- Laptops: Portable computers with built-in screens, keyboards, and batteries. Desktops: Usually stay in one place and often offer easier upgrades
+
+42- Workstations are more powerful computers designed for professional tasks such as engineering, 3D design, and scientific applications
+
+43- Minicomputers: Support multiple users with moderate processing power. Mainframes: Handle large amounts of data and many users. Microcomputers: Designed mainly for individual users
+
+44- Servers provide services, data, and resources to other computers over a network, while personal computers are mainly designed for individual use
+
+45- System software: Manages hardware and system operations, e.g., Windows. Application software: Performs specific user tasks, e.g., Microsoft Word
+
+
+46- The main types are operating systems, device drivers, utility software, and language translators.
+47- An operating system manages hardware and software resources and provides an interface between the user and the computer
+
+48- BIOS initializes and tests hardware during startup and helps start the operating system
+
+49- Utility software maintains, protects, and optimizes a computer. It is a type of system software focused on maintenance tasks
+
+50- Its main functions include virus protection, disk cleanup, file management, data backup, and system optimization
+
+51- Examples include antivirus software, disk cleanup tools, backup utilities, and file compression programs
+
+52- Disk defragmentation reorganizes fragmented files on a hard disk to improve data access speed and performance
+
+53- Programming software helps developers create programs. System software manages the computer, while application software performs tasks for users
+
+
+54- The main types include text editors, compilers, interpreters, debuggers, and integrated development environments (IDEs)
+
+55- A text editor allows programmers to write, edit, and save source code
+
+56- Compiler: Translates the entire program into machine code before execution Interpreter: Translates and executes code one instruction at a time
+
+57- Examples include Microsoft Word, Microsoft Excel, Google Chrome, Adobe Photoshop, and media players
+
+58- Graphic software: Programs used to create, edit, and manipulate images. Raster graphics: Images made up of pixels, such as JPEG and PNG images.
+
+
+ 
