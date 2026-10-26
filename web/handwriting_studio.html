@@ -266,6 +266,20 @@ const ARABIC_RE = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\
 const LATIN_RE = /[A-Za-z\u00c0-\u024f]/;
 const isArabic = s => ARABIC_RE.test(s);
 const wordType = w => ARABIC_RE.test(w) ? "R" : LATIN_RE.test(w) ? "L" : "N";
+// letters that never join to the letter after them: the pen lifts here, so a word is written as several strokes
+const NON_JOINERS = new Set("اآأإٱدذرزوؤةءژڈڑۀەٷ");
+const MARK_RE = /[ً-ٰٟۖ-ۭ]/;
+function splitStrokes(word) {   // shaping each stroke alone gives the same letter forms: the cuts sit where letters do not join
+  const segs = []; let cur = "", lastBase = "";
+  for (const ch of word) {
+    if (MARK_RE.test(ch)) { cur += ch; continue; }
+    if (!ARABIC_RE.test(ch)) { if (cur) { segs.push(cur); cur = ""; } segs.push(ch); lastBase = ""; continue; }
+    if (cur && NON_JOINERS.has(lastBase)) { segs.push(cur); cur = ""; }
+    cur += ch; lastBase = ch;
+  }
+  if (cur) segs.push(cur);
+  return segs;
+}
 function textDirection(s, def) { for (const ch of s) { if (ARABIC_RE.test(ch)) return "rtl"; if (LATIN_RE.test(ch)) return "ltr"; } return def; }
 function visualOrder(words, dir) {   // word-level bidi: the words of one line in left-to-right display order
   const base = dir === "rtl" ? "R" : "L", flip = dir === "rtl" ? "L" : "R";
@@ -498,11 +512,11 @@ class Handwriter {
     // the hand wobbles: slide thin horizontal strips sideways, then thin vertical strips up and down
     const x0 = Math.max(0, Math.floor(ox - 0.45 * fs * S)), x1 = Math.min(gc.width, Math.ceil(ox + adv + 0.5 * fs * S));
     const y0 = Math.max(0, Math.floor(oy - 1.25 * fs * S)), y1 = Math.min(gc.height, Math.ceil(oy + (arabic ? 0.95 : 0.6) * fs * S));
-    const a = p.warp * S, strip = 2 * S;
-    const ph1 = R.uniform(0, 6.28), ph2 = R.uniform(0, 6.28), f1 = R.uniform(0.012, 0.03), f2 = R.uniform(0.03, 0.07);
+    const a = p.warp * S, strip = 2 * S, ff = arabic ? 1.7 : 1;   // Arabic strokes wobble at letter scale
+    const ph1 = R.uniform(0, 6.28), ph2 = R.uniform(0, 6.28), f1 = R.uniform(0.012, 0.03) * ff, f2 = R.uniform(0.03, 0.07) * ff;
     t.clearRect(0, 0, tc.width, tc.height);
     for (let y = y0; y < y1; y += strip) { const dx = a * (0.65 * Math.sin(y * f1 + ph1) + 0.35 * Math.sin(y * f2 + ph2)); t.drawImage(gc, x0, y, x1 - x0, strip, 10 + x0 + dx, 10 + y, x1 - x0, strip); }
-    const ph3 = R.uniform(0, 6.28), ph4 = R.uniform(0, 6.28), f3 = R.uniform(0.012, 0.03), f4 = R.uniform(0.03, 0.07);
+    const ph3 = R.uniform(0, 6.28), ph4 = R.uniform(0, 6.28), f3 = R.uniform(0.012, 0.03) * ff, f4 = R.uniform(0.03, 0.07) * ff;
     const dstX = x - (ox + 10) / S, dstY = baselineY - (oy + 10) / S, ty0 = 10 + y0 - 4, th = (y1 - y0) + 8;
     ink.globalAlpha = p.intensity;
     for (let cx = 10 + x0 - 6; cx < 10 + x1 + 6; cx += strip) {
@@ -526,10 +540,23 @@ class Handwriter {
     for (const word of visualOrder(words, lineDir || "ltr")) {
       const arabic = isArabic(word), wordDy = R.gauss(0, 1.8 * (0.3 + M)), wordInt = R.uniform(0.8, 1.0), wordBold = R.uniform(-0.3, 0.7), wWeight = this.pickWeight();
       const driftAt = x => (drift[Math.min(Math.max(x | 0, 0), PW - 1)] - 0.5) * 3;
-      if (arabic) {   // a joined-up word is one stroke: it tilts and leans less than a single letter
-        const p = this.glyphParams(this.pickArWeight(), wordBold + 0.15, false); p.rot *= 0.6; p.shear *= 0.4; p.intensity = wordInt;
-        pieces.push({ x: pen, dy: wordDy + pen * slope + driftAt(pen), text: word, p, arabic: true });
-        pen += this.measureAr(word, p.weight) * this.narrow * R.uniform(0.97, 1.05);
+      if (arabic) {   // written stroke by stroke, the pen lifting at the letters that do not join; each stroke has its own tilt, size and pressure
+        const wArW = this.pickArWeight(), strokes = [];
+        for (const seg of splitStrokes(word)) {
+          const p = this.glyphParams(R.next() < 0.85 ? wArW : this.pickArWeight(), wordBold + 0.15, false);
+          p.rot *= 0.9; p.shear = p.shear * 0.4 + R.gauss(0, 0.03 * M);
+          p.sx = Math.max(0.8, R.gauss(1, 0.06 * (0.5 + M))); p.sy = Math.max(0.8, R.gauss(1, 0.08 * (0.5 + M)));
+          p.intensity = wordInt * R.uniform(0.85, 1);
+          strokes.push({ seg, p, w: this.measureAr(seg, p.weight) * this.narrow * p.sx * R.uniform(0.97, 1.04), sdy: R.gauss(0, 1.4 * (0.3 + M)) });
+        }
+        const wordWidth = strokes.reduce((a, s) => a + s.w, 0);
+        let xRight = pen + wordWidth;   // strokes run right to left inside the word
+        for (const s of strokes) {
+          const xLeft = xRight - s.w;
+          pieces.push({ x: xLeft, dy: wordDy + s.sdy + xLeft * slope + driftAt(xLeft), text: s.seg, p: s.p, arabic: true });
+          xRight = xLeft + R.gauss(0, 1.2 * M);   // strokes nearly touch, sometimes overlap
+        }
+        pen += wordWidth;
       } else {
         let prev = null;
         for (const ch of word) {

@@ -132,6 +132,32 @@ def is_arabic(s):
     return bool(ARABIC_RE.search(s))
 
 
+# letters that never join to the letter after them: the pen lifts here, so a word is written as several strokes
+NON_JOINERS = set("اآأإٱدذرزوؤةءژڈڑۀەٷ")
+MARK_RE = re.compile(r"[ً-ٰٟۖ-ۭ]")
+
+
+def split_strokes(word):
+    """Split an Arabic word into the pen strokes a hand would write it in. Shaping each stroke on its
+    own gives the same letter forms, because the cuts sit exactly where letters do not join."""
+    segs, cur, last_base = [], "", ""
+    for ch in word:
+        if MARK_RE.match(ch):
+            cur += ch
+            continue
+        if not ARABIC_RE.match(ch):                 # punctuation or a digit: a stroke of its own
+            if cur:
+                segs.append(cur); cur = ""
+            segs.append(ch); last_base = ""
+            continue
+        if cur and last_base in NON_JOINERS:
+            segs.append(cur); cur = ""
+        cur += ch; last_base = ch
+    if cur:
+        segs.append(cur)
+    return segs
+
+
 def word_type(w):
     """R for Arabic script, L for Latin letters, N for numbers and punctuation."""
     if ARABIC_RE.search(w):
@@ -348,7 +374,7 @@ class Handwriter:
         g = g.resize((nw, nh), Image.BICUBIC); ox *= sx; oy *= sy
         arr = np.asarray(g.filter(ImageFilter.GaussianBlur(0.75 * SS)), np.float32) / 255
         arr = np.clip((arr - p["weight"]) / 0.22, 0, 1)
-        arr = elastic_warp(arr, p["warp"] * SS, max(6, int(0.3 * self.font_size * SS)), p["seed"])
+        arr = elastic_warp(arr, p["warp"] * SS, max(6, int(p.get("warp_scale", 0.3) * self.font_size * SS)), p["seed"])
         gi = Image.fromarray((arr * 255).astype(np.uint8)).resize((max(1, nw // SS), max(1, nh // SS)), Image.LANCZOS)
         return np.asarray(gi, np.float32) / 255, ox / SS, oy / SS
 
@@ -414,16 +440,31 @@ class Handwriter:
             word_w = R.uniform(0.42, 0.54)
             fi_word = self._pick_font()
             if arabic:
-                p = self._glyph_params(word_w - 0.05, big=False)   # a touch bolder: Arabic hands press harder
-                p["font"] = fi_word
-                p["rot"] *= 0.6                               # a joined-up word tilts less than one letter
-                p["shear"] *= 0.4                             # and leans far less than Latin print
-                g = self._render_glyph(word, p, arabic=True)
-                dy = word_dy + (pen) * slope + (line_drift[min(max(int(pen), 0), PW - 1)] - 0.5) * 3.0
-                if g is not None:
-                    pieces.append((pen, dy, g, word_int))
-                ar_fnt = self.ar_base[fi_word % len(self.ar_base)] if self.ar_base else self.fonts_base[0]
-                pen += self._ar_len(word, ar_fnt) * self.narrow * R.uniform(0.97, 1.05)
+                # the word is written stroke by stroke, the pen lifting at the letters that do not join;
+                # every stroke gets its own tilt, size, pressure and wobble, like the Latin letters do
+                n_ar = max(1, len(self.ar_base))
+                strokes = []
+                for seg in split_strokes(word):
+                    p = self._glyph_params(word_w - 0.05, big=False)      # a touch bolder: Arabic hands press harder
+                    p["font"] = (fi_word if R.random() < 0.85 else self._pick_font()) % n_ar
+                    p["rot"] *= 0.9
+                    p["shear"] = p["shear"] * 0.4 + R.gauss(0, 0.03 * MESS)
+                    p["sx"] = max(0.8, R.gauss(1.0, 0.06 * (0.5 + MESS)))
+                    p["sy"] = max(0.8, R.gauss(1.0, 0.08 * (0.5 + MESS)))
+                    p["warp_scale"] = 0.2                                     # wobble at letter scale, not word scale
+                    g = self._render_glyph(seg, p, arabic=True)
+                    ar_fnt = self.ar_base[p["font"]] if self.ar_base else self.fonts_base[0]
+                    w = self._ar_len(seg, ar_fnt) * self.narrow * p["sx"] * R.uniform(0.97, 1.04)
+                    strokes.append((g, w, R.gauss(0, 1.4 * (0.3 + MESS)), word_int * R.uniform(0.85, 1.0)))
+                word_width = sum(w for _, w, _, _ in strokes)
+                x_right = pen + word_width                                    # strokes run right to left inside the word
+                for g, w, sdy, inten in strokes:
+                    x_left = x_right - w
+                    if g is not None:
+                        dy = word_dy + sdy + x_left * slope + (line_drift[min(max(int(x_left), 0), PW - 1)] - 0.5) * 3.0
+                        pieces.append((x_left, dy, g, inten))
+                    x_right = x_left + R.gauss(0, 1.2 * MESS)                 # strokes nearly touch, sometimes overlap
+                pen += word_width
                 fnt = self.fonts_base[fi_word]
             else:
                 prev = None
