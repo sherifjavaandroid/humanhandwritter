@@ -70,6 +70,7 @@ CAPACITY = len(RULES) - 2 - FIRST_ROW
 LABEL_X = MARGIN_X + 14
 PHOTO_W, PHOTO_H = 1800, 2400
 
+AR_SAMPLE = "\u0627\u0644\u062d\u0627\u0633\u0648\u0628 \u064a\u0633\u062a\u0642\u0628\u0644 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a"   # "the computer receives the data"
 LABEL_RE = re.compile(r"^[\d\u0660-\u0669]+[-)]$")
 HEAD_RE = re.compile(r"(?<![\w(])([A-Z][A-Za-z-]*(?: [a-z][A-Za-z-]*)?):(?=\s|$)")
 NOT_HEADS = {"Example", "Examples", "Note", "Answer"}
@@ -304,13 +305,17 @@ class Handwriter:
         self.font_files = font_paths(o["font"])
         self.ar_files, self.ar_thicken = arabic_font_paths(o["arabic_font"])
         self.shaper = "raqm" if HAS_RAQM else ("reshaper" if arabic_reshaper is not None else None)
+        self._shape_cache = {}
         probe = ImageFont.truetype(self.font_files[0], 100)
         self.cap100 = -probe.getbbox("H", anchor="ls")[1]
         self.ar_ratio = 1.0
         if self.ar_files:
+            # size the Arabic hand by the full height of a sample phrase (tall letters to the deepest tails),
+            # which copes with fonts whose alef is short or whose finals swing low; target: 2.5 capitals
             ap = ImageFont.truetype(self.ar_files[0], 100)
-            alef100 = -ap.getbbox("\u0627", anchor="ls")[1] or self.cap100
-            self.ar_ratio = (self.cap100 * 1.45) / alef100          # Arabic is written big: an alef spans well over a line
+            s, kw = self._shape(AR_SAMPLE)
+            l, t, r, b = ap.getbbox(s, anchor="ls", **kw)
+            self.ar_ratio = (self.cap100 * 2.7) / max(1, b - t)
         self.size_user = float(o["size"])
         self._set_size(self.size_user)
         self.font_w = [0.62, 0.38] if len(self.font_files) == 2 else None
@@ -321,7 +326,6 @@ class Handwriter:
         self.items = []
         self.warnings = []
         self.page_dir = "ltr"
-        self._shape_cache = {}
 
     def _set_size(self, size):
         self.size = size
